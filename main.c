@@ -98,6 +98,10 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+
   int32_t ccrval = 1999;
 
   /* USER CODE END 2 */
@@ -109,7 +113,10 @@ int main(void)
 
 	  while(ccrval > 0)
 	  {
+		  TIM2->CCR2 = ccrval;
 		  TIM2->CCR1 = ccrval;
+		  TIM2->CCR3 = ccrval;
+		  TIM4->CCR4 = ccrval;
 		  ccrval -= 1;
 		  HAL_Delay(1);
 
@@ -117,6 +124,9 @@ int main(void)
 	  while(ccrval < 1999)
 	  {
 		  TIM2->CCR1 = ccrval;
+		  TIM2->CCR2 = ccrval;
+		  TIM2->CCR3 = ccrval;
+		  TIM4->CCR4 = ccrval;
 		  ccrval += 1;
 		  HAL_Delay(1);
 	  }
