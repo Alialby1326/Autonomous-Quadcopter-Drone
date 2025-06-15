@@ -6,5 +6,5 @@ The STM32 Blackpill is being used to run control logic and output to the motors 
 - [x] configure clock & test PWM
 - [x] test PWM on 4 channels
 - [x] read analog values from potentiometer and use to adjust all LEDs
-- [ ] figure out method for control logic
-- [ ] joystick control 
+- [x] joystick control
+- [ ] Interface IMU sensor to read values and implement PID control for hovering.
