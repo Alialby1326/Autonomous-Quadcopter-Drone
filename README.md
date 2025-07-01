@@ -1,4 +1,5 @@
 # Autonomous-Quadcopter-Drone
+### (in progress)
 The goal is to build an autonomous quadcopter drone fusing multiple sensors and implementing computer vision in the future. 
 Custom Quadcopter Drone Project:
 - STM32F411 "Blackpill" as the microcontroller
@@ -18,5 +19,11 @@ The STM32 Blackpill is being used to run control logic for the IMU. Once this is
 - [ ] Write Madgwick filter code in STM32 for IMU sensor fusion.
 - [ ] Write a Python script for visualization, send filtered data and Euler angles from STM32 to the pygame visual script
 
+Current setup: 
+- 4 LEDS to test PWM (for motors), potentiometer would adjust all brightness levels
+- USB to UART converter for STM32 to send serial data to read from PUTTY on laptop
+- MPU9250 communicating via i2c
+
+![image](https://github.com/user-attachments/assets/7bd714c2-9c71-4ed1-be03-569fdb4183a3)
 
 
