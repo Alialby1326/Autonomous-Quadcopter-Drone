@@ -1,8 +1,8 @@
 # Autonomous-Quadcopter-Drone
-A quadcopter drone that uses an STM32 blackpill microcontroller, a Raspberry Pi Zero 2 W, along with sensor fusion on a custom PCB. Plans to implement computer vision for automation after manual control.
+A quadcopter drone that will use an STM32 blackpill microcontroller, a Raspberry Pi (model tbd), along with sensor fusion on a custom PCB. Plans to implement computer vision for automation after manual control.
 
 ### Phase 1: Testing motor control logic
-The STM32 Blackpill is being used to run control logic and output correct PWM to the motors accordingly. The commands should be tested, and the control should be figured out before moving onto real manual control using a controller + Raspberry Pi Zero 2 W via Bluetooth. 
+The STM32 Blackpill is being used to run control logic and output correct PWM to the motors accordingly. The commands should be tested, and the control should be figured out before moving onto real manual control using a controller + Raspberry Pi via Bluetooth. 
 
 #### Currently writing a Python script to visualize drone orientation with the IMU's accelerometer, gyroscope, and magnetometer data. I will be implementing a madgwick filter by hand with STM32 code.
 
