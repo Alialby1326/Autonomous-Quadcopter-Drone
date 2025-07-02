@@ -17,7 +17,7 @@ The STM32 Blackpill is being used to run control logic for the IMU. Once this is
 - [x] Interface IMU (MPU9250) sensor through i2c
 - [ ] Implement magnetometer calibration to avoid hard and soft iron distortion.
 - [ ] Write Madgwick filter code in STM32 for IMU sensor fusion.
-- [ ] Write a Python script for visualization, send filtered data and Euler angles from STM32 to the pygame visual script
+- [ ] Write a Python script for real-time orientation visualization, send filtered data and Euler angles from STM32 to a pygame visual
 
 7/1/2025 Current setup: 
 - 4 LEDS to test PWM (for motors), potentiometer would adjust all brightness levels
