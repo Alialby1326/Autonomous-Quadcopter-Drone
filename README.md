@@ -16,9 +16,10 @@ The STM32 Blackpill is being used to run control logic for the IMU. Once this is
 - [x] Read analog values from the potentiometer and use them to adjust all LEDs
 - [x] Use multi-channel ADC with DMA to read joystick and potentiometer values
 - [x] Interface IMU (MPU9250) sensor through i2c
-- [ ] Implement magnetometer calibration to avoid hard and soft iron distortion.
+- [ ] Implement early magnetometer calibration (look into magneto python library), will need recalibration after PCB
 - [ ] Write Madgwick filter code in STM32 for IMU sensor fusion.
 - [ ] Write a Python script for real-time orientation visualization, send filtered data and Euler angles from STM32 to a pygame visual
+- [ ] design pcb
 
 7/1/2025 Current setup: 
 - 4 LEDS to test PWM (for motors), potentiometer would adjust all brightness levels
