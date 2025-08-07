@@ -17,7 +17,7 @@ The STM32 Blackpill is being used to run control logic for the IMU. Once this is
 - [x] Use multi-channel ADC with DMA to read joystick and potentiometer values
 - [x] Interface IMU (MPU9250) sensor through i2c
 - [x] Implement early magnetometer calibration, will need recalibration after PCB
-- [ ] Write Python scripts for control logic (Kalman Filter), so the Raspberry Pi can run the control logic.
+- [ ] Write Python scripts for control logic (Extended Kalman Filter), so the Raspberry Pi can run the control logic. Think about doing it in c++
 - [ ] Write Python script to visualize drone orientation
 - [ ] Write PID controller on STM32
 
