@@ -1,7 +1,7 @@
 # Autonomous-Quadcopter-Drone
 
 ### (in progress)
-### Currently learning throughout EE curriculum and 
+### Currently learning throughout EE curriculum and trying to apply knowledge to the project along the way.
 The goal is to build an autonomous quadcopter drone fusing multiple sensors and implementing computer vision for autonomy in the future. 
 Custom Quadcopter Drone Project:
 - STM32F411 "Blackpill" as the microcontroller
