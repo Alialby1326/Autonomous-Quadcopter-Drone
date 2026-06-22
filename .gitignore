@@ -1,0 +1,32 @@
+#Outputs
+Debug/
+Release/
+build/
+
+#Object files, libraries, and executables
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+*.su
+*.list
+
+#STM32CubeMX generated files 
+.mxproject
+
+#Launch configurations
+*.launch
+
+#OS specific files
+.DS_Store
+Thumbs.db
+
+#Security
+secrets.h
+credentials.h
+wifi_config.h
+*.key
+*.pem
+.env
