@@ -1,6 +1,7 @@
 Debug/
 Release/
 build/
+.venv/
 
 *.o
 *.d
