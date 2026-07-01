@@ -4,24 +4,15 @@
 #   ACCELEROMETER: ax: <g>, ay: <g>, az: <g>
 # and (optionally) GYROSCOPE/MAGNETOMETER lines which are ignored here.
 
-import serial
 import numpy as np
-import sys
+import zmq
 import time
 import math
-from collections import deque
 
 import matplotlib
 matplotlib.use("TkAgg")  # 'Qt5Agg' also fine; pick one that works on your system
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 (needed by mpl)
-
-# --------------------
-# Serial configuration
-# --------------------
-PORT = "COM4"         # change if needed
-BAUD = 115200
-TIMEOUT = 0.1         # seconds
 
 # -----------------------------------
 # Smoothing (helps with accel jitter)
@@ -31,27 +22,17 @@ EMA_ALPHA = 0.15      # 0..1, higher = less smoothing
 ROLL_MAX_RAD  = math.radians(85)
 PITCH_MAX_RAD = math.radians(85)
 
+#set up subscriber
+context = zmq.Context()
+subscriber = context.socket(zmq.SUB)
+subscriber.connect('tcp://127.0.0.1:5555')
+subscriber.setsockopt_string(zmq.SUBSCRIBE, 'ACCEL')
+
 def ema_update(prev, new, alpha=EMA_ALPHA):
     if prev is None:
         return new
     return (1 - alpha) * prev + alpha * new
 
-def parse_accel_line(s):
-    """
-    Parse a line like: "ACCELEROMETER: ax: 0.01, ay: -0.02, az: 0.99"
-    Returns ax, ay, az as floats in g's.
-    """
-    try:
-        # tolerate extra spaces/CRLF
-        s = s.strip().replace("\\r", " ").replace("\\n", " ")
-        # Strip label and split
-        parts = s.replace("ACCELEROMETER:", "").split(",")
-        ax = float(parts[0].split(":")[1].strip())
-        ay = float(parts[1].split(":")[1].strip())
-        az = float(parts[2].split(":")[1].strip())
-        return ax, ay, az
-    except Exception:
-        return None
 
 def accel_to_pitch_roll(ax, ay, az):
     """
@@ -149,48 +130,33 @@ text_pitch = ax.text2D(0.02, 0.88, "", transform=ax.transAxes)
 roll_ema = None
 pitch_ema = None
 
-# Serial (open lazily; tolerate disconnects)
-ser = None
-def ensure_serial():
-    global ser
-    if ser is None:
-        try:
-            ser = serial.Serial(PORT, BAUD, timeout=TIMEOUT)
-            ser.reset_input_buffer()
-            print(f"Opened {PORT} @ {BAUD}")
-        except Exception as e:
-            print(f"Could not open {PORT}: {e}")
-            ser = None
-
 def read_latest_accel():
     """
-    Read lines until we get an ACCELEROMETER line, or timeout returns None.
-    Keeps up if other sensors chat in-between.
+    Subscribe to ACCEL topic from publisher
     """
-    ensure_serial()
-    if ser is None:
-        return None
     t0 = time.time()
-    while time.time() - t0 < 0.05:  # ~50ms budget per animation frame
+    while time.time() - t0 < 0.1:  # ~100ms budget per animation frame
         try:
-            raw = ser.readline()
-            if not raw:
-                break
-            s = raw.decode(errors="ignore").strip()
-            if "ACCELEROMETER" in s:
-                return parse_accel_line(s)
-        except Exception:
+            topic = subscriber.recv_string(flags=zmq.NOBLOCK)
+            data = subscriber.recv_json(flags=zmq.NOBLOCK)
+            if topic == 'ACCEL':
+                ax, ay, az = data['ax'], data['ay'], data['az']
+                return ax, ay, az
+        except zmq.error.Again:
             break
+        except Exception as e:
+            print(f"error: {e}")
     return None
 
 def update(frame_idx):
     global roll_ema, pitch_ema
 
-    data = read_latest_accel()
-    if data is not None:
-        ax_g, ay_g, az_g = data
+    a_data = read_latest_accel()
+    
+    if a_data is not None:
+        ax_g, ay_g, az_g = a_data  
         apitch, aroll = accel_to_pitch_roll(ax_g, ay_g, az_g)
-
+        
         # smooth
         roll_ema  = ema_update(roll_ema,  aroll)
         pitch_ema = ema_update(pitch_ema, apitch)
