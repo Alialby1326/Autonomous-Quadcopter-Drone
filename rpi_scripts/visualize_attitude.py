@@ -14,11 +14,8 @@ matplotlib.use("TkAgg")  # 'Qt5Agg' also fine; pick one that works on your syste
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 (needed by mpl)
 
-# -----------------------------------
-# Smoothing (helps with accel jitter)
-# -----------------------------------
 EMA_ALPHA = 0.15      # 0..1, higher = less smoothing
-# optional: clamp angles to reasonable range to avoid spikes
+
 ROLL_MAX_RAD  = math.radians(85)
 PITCH_MAX_RAD = math.radians(85)
 
@@ -135,7 +132,7 @@ def read_latest_accel():
     Subscribe to ACCEL topic from publisher
     """
     t0 = time.time()
-    while time.time() - t0 < 0.1:  # ~100ms budget per animation frame
+    while time.time() - t0 < 0.05:  # ~50ms budget per animation frame
         try:
             topic = subscriber.recv_string(flags=zmq.NOBLOCK)
             data = subscriber.recv_json(flags=zmq.NOBLOCK)
@@ -152,7 +149,7 @@ def update(frame_idx):
     global roll_ema, pitch_ema
 
     a_data = read_latest_accel()
-    
+
     if a_data is not None:
         ax_g, ay_g, az_g = a_data  
         apitch, aroll = accel_to_pitch_roll(ax_g, ay_g, az_g)

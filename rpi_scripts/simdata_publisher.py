@@ -32,6 +32,7 @@ while True:
                     }
                     publisher.send_string('GYRO', flags=zmq.SNDMORE)
                     publisher.send_json(data)
+                    #print(f"GYRO: {data}")
                 except:
                     pass
             elif 'ACCELEROMETER' in line:
@@ -47,6 +48,7 @@ while True:
                     }
                     publisher.send_string('ACCEL', flags=zmq.SNDMORE)
                     publisher.send_json(data)
+                    print(f"ACCEL: {data}")
                 except:
                     pass
             elif 'MAGNETOMETER' in line:
@@ -62,6 +64,7 @@ while True:
                     }
                     publisher.send_string('MAG', flags=zmq.SNDMORE)
                     publisher.send_json(data)
+                    #print(f"MAG: {data}")
                 except:
                     pass            
             #accounting for HAL_DELAY   
