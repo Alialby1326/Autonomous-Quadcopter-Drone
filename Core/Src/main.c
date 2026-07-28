@@ -115,34 +115,41 @@ int main(void)
   //reading pot & joystick vals
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)vals, 3);
 
-  IMU_MagINIT(&hi2c1);
+  IMU_MagINIT(&hi2c1, &imu);
 
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  
+  uint32_t last_tick = HAL_GetTick();
+  const uint32_t LOOP_TIME_MS = 10; // 100 Hz loop rate
+  uint8_t print_counter = 0;
+  
   while (1)
   {
+      if (HAL_GetTick() - last_tick >= LOOP_TIME_MS) {
+          last_tick = HAL_GetTick();
+          
+          IMU_ReadAccel(&hi2c1, &imu);
+          IMU_ReadGyro(&hi2c1, &imu);
+          IMU_ReadMag(&hi2c1, &imu);
 
-
-	  IMU_ReadAccel(&hi2c1, &imu);
-	  snprintf(buffer, sizeof(buffer), "ACCELEROMETER: X: %d, Y: %d, Z: %d\r\n", imu.ax, imu.ay, imu.az);
-	  HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
-	  IMU_ReadGyro(&hi2c1, &imu);
-	  snprintf(buffer, sizeof(buffer), "GYROSCOPE: X: %d, Y: %d, Z: %d\r\n", imu.gx, imu.gy, imu.gz);
-	  HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
-	  IMU_ReadMag(&hi2c1, &imu);
-	  snprintf(buffer, sizeof(buffer), "MAGNETOMETER: X: %d, Y: %d, Z: %d\r\n", imu.mx, imu.my, imu.mz);
-	  HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
-	  snprintf(buffer, sizeof(buffer), "\n");
-	  HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
-	  HAL_Delay(100);
-
-
-
-
-
+          // We only print every 10 loops (10Hz) to prevent flooding the UART and blocking the loop
+          print_counter++;
+          if (print_counter >= 10) {
+              print_counter = 0;
+              snprintf(buffer, sizeof(buffer), "ACCELEROMETER: X: %.2f, Y: %.2f, Z: %.2f\r\n", imu.ax, imu.ay, imu.az);
+              HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 50);
+              snprintf(buffer, sizeof(buffer), "GYROSCOPE: X: %.2f, Y: %.2f, Z: %.2f\r\n", imu.gx, imu.gy, imu.gz);
+              HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 50);
+              snprintf(buffer, sizeof(buffer), "MAGNETOMETER: X: %.2f, Y: %.2f, Z: %.2f\r\n", imu.mx, imu.my, imu.mz);
+              HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 50);
+              snprintf(buffer, sizeof(buffer), "\n");
+              HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 50);
+          }
+      }
 
     /* USER CODE END WHILE */
 

@@ -27,19 +27,19 @@
 
 //IMU data
 typedef struct {
-    int16_t ax, ay, az;
-    int16_t gx, gy, gz;
-    int16_t mx, my, mz;
+    float ax, ay, az;
+    float gx, gy, gz;
+    float mx, my, mz;
     float accel_sens, gyro_sens;
 } MPU9250_Data;
 
 
 
 //functions
-uint8_t MPU9250_Init(I2C_HandleTypeDef *hi2c);
+uint8_t MPU9250_Init(I2C_HandleTypeDef *hi2c, MPU9250_Data *data);
 void IMU_ReadAccel(I2C_HandleTypeDef *hi2c, MPU9250_Data *data);
 void IMU_ReadGyro(I2C_HandleTypeDef *hi2c, MPU9250_Data *data);
 void IMU_ReadMag(I2C_HandleTypeDef *hi2c, MPU9250_Data *data);
-void IMU_MagINIT(I2C_HandleTypeDef *hi2c);
+void IMU_MagINIT(I2C_HandleTypeDef *hi2c, MPU9250_Data *data);
 
 #endif /* INC_IMU_H_ */
