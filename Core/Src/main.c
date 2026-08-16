@@ -27,9 +27,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <string.h>
-#include <stdio.h>
 #include "imu.h"
+#include "telemetry.h"
+#include "timebase.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,6 +40,13 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+/* Control loop rate. The MPU9250 is configured for a 1 kHz internal sample
+ * rate, so this can be raised well beyond 100 Hz once there is a PID loop
+ * worth running faster -- check Telemetry_Dropped() afterwards to confirm the
+ * link is still keeping up. */
+#define LOOP_RATE_HZ    100u
+#define LOOP_PERIOD_US  (1000000u / LOOP_RATE_HZ)
 
 /* USER CODE END PD */
 
@@ -55,7 +62,6 @@ uint16_t ccrval;
 int16_t xval;
 int16_t yval;
 uint32_t vals[3];
-char buffer[64];
 MPU9250_Data imu;
 /* USER CODE END PV */
 
@@ -67,6 +73,25 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+static void report_imu_status(IMU_Status status)
+{
+	switch (status) {
+	case IMU_OK:
+		Telemetry_Print("# imu ok\n");
+		break;
+	case IMU_ERR_WHOAMI:
+		Telemetry_Print("# imu error: WHO_AM_I mismatch, not an MPU9250\n");
+		break;
+	case IMU_ERR_MAG_WHOAMI:
+		Telemetry_Print("# imu error: AK8963 not responding; check I2C bypass\n");
+		break;
+	case IMU_ERR_I2C:
+	default:
+		Telemetry_Print("# imu error: I2C transfer failed; check wiring and pull-ups\n");
+		break;
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -115,41 +140,85 @@ int main(void)
   //reading pot & joystick vals
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)vals, 3);
 
-  IMU_MagINIT(&hi2c1, &imu);
+  if (Timebase_Init() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (Telemetry_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
+  Telemetry_Print("# drone_code boot\n");
+  Telemetry_Print("# I,t_us,ax,ay,az,gx,gy,gz,mx,my,mz,flags  (m/s^2, deg/s, uT)\n");
+
+  IMU_Status imu_status = IMU_Init(&hi2c1, &imu);
+  report_imu_status(imu_status);
+
+  /* Estimate and remove the gyro's zero offset. It must be measured with the
+   * vehicle stationary, so it happens once at boot -- any movement during this
+   * second is recorded as bias and subtracted from every later reading. */
+  if (imu_status == IMU_OK)
+  {
+    Telemetry_Print("# calibrating gyro, hold still\n");
+    Telemetry_Service();
+    if (IMU_CalibrateGyro(&hi2c1, &imu) == IMU_OK)
+    {
+      Telemetry_Print("# gyro calibrated\n");
+    }
+    else
+    {
+      Telemetry_Print("# gyro calibration failed; bias left at zero\n");
+    }
+  }
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  
-  uint32_t last_tick = HAL_GetTick();
-  const uint32_t LOOP_TIME_MS = 10; // 100 Hz loop rate
-  uint8_t print_counter = 0;
-  
+
+  /* Scheduling runs off the 1 MHz TIM5 counter rather than HAL_GetTick(),
+   * whose 1 ms resolution is the same order as the loop period itself.
+   * Timestamps are taken from the same counter and shipped with each sample,
+   * so the host can see the real interval instead of assuming a nominal one.
+   *
+   * All the comparisons below are signed differences, which stay correct
+   * across the counter's 32-bit wrap (about every 71 minutes). */
+  uint32_t next_us = Timebase_Micros() + LOOP_PERIOD_US;
+
   while (1)
   {
-      if (HAL_GetTick() - last_tick >= LOOP_TIME_MS) {
-          last_tick = HAL_GetTick();
-          
-          IMU_ReadAccel(&hi2c1, &imu);
-          IMU_ReadGyro(&hi2c1, &imu);
-          IMU_ReadMag(&hi2c1, &imu);
+      uint32_t now_us = Timebase_Micros();
 
-          // We only print every 10 loops (10Hz) to prevent flooding the UART and blocking the loop
-          print_counter++;
-          if (print_counter >= 10) {
-              print_counter = 0;
-              snprintf(buffer, sizeof(buffer), "ACCELEROMETER: X: %.2f, Y: %.2f, Z: %.2f\r\n", imu.ax, imu.ay, imu.az);
-              HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 50);
-              snprintf(buffer, sizeof(buffer), "GYROSCOPE: X: %.2f, Y: %.2f, Z: %.2f\r\n", imu.gx, imu.gy, imu.gz);
-              HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 50);
-              snprintf(buffer, sizeof(buffer), "MAGNETOMETER: X: %.2f, Y: %.2f, Z: %.2f\r\n", imu.mx, imu.my, imu.mz);
-              HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 50);
-              snprintf(buffer, sizeof(buffer), "\n");
-              HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 50);
-          }
+      if ((int32_t)(now_us - next_us) < 0)
+      {
+          /* Time left over: keep the telemetry link fed and wait. */
+          Telemetry_Service();
+          continue;
       }
+
+      uint8_t loop_flags = 0u;
+
+      /* More than a full period late means the previous iteration overran.
+       * Report it and resynchronize rather than trying to catch up, which
+       * would run several iterations back to back with a meaningless dt. */
+      if ((int32_t)(now_us - next_us) > (int32_t)LOOP_PERIOD_US)
+      {
+          loop_flags |= TLM_FLAG_LOOP_OVERRUN;
+          next_us = now_us + LOOP_PERIOD_US;
+      }
+      else
+      {
+          next_us += LOOP_PERIOD_US;
+      }
+
+      IMU_ReadAll(&hi2c1, &imu);
+
+      /* Every sample goes out, not every tenth: the write is a memcpy into a
+       * ring buffer and DMA does the rest, so this no longer costs the loop
+       * anything measurable. */
+      Telemetry_SendImu(now_us, &imu, loop_flags);
+      Telemetry_Service();
 
     /* USER CODE END WHILE */
 

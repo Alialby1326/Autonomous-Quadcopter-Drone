@@ -4,6 +4,10 @@ build/
 .venv/
 .settings/
 
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 *.o
 *.d
 *.elf
