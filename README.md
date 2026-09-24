@@ -32,6 +32,9 @@ STM32 (100 Hz, deterministic)          Raspberry Pi / laptop (best-effort)
          |  setpoints
 ```
 
+The full component diagram — peripherals, the telemetry link, host tooling, and
+what is still planned — is in [docs/DESIGN.md](docs/DESIGN.md).
+
 ## Building the firmware
 
 STM32CubeIDE still works as before, and remains the debugger and flasher. There
