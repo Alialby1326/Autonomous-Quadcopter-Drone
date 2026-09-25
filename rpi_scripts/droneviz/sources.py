@@ -1,49 +1,17 @@
-"""Sample sources: live serial, recorded log, or simulator.
+"""Sample sources: live serial or recorded log.
 
-All three yield the same `ImuSample` stream, so everything downstream -- the
-publisher, the filter, the visualizer, the tests -- is written once and works
-against all three. That is the whole point of the restructure: developing
-against the simulator and then pointing the identical code at the board should
-require changing one command-line flag, not one line of code.
+Both yield the same `ImuSample` stream, so the visualizer is written once and
+works against either -- watching the board live and replaying a capture of it
+differ by one command-line flag.
 """
 
 from __future__ import annotations
 
 import re
 import time
-from typing import Iterator, Optional
+from typing import Iterator
 
-from .simulate import DEFAULT_DURATION, SensorModel, simulate
 from .telemetry import ImuSample, parse_line
-
-
-def iter_sim(
-    duration: float = DEFAULT_DURATION,
-    rate_hz: float = 200.0,
-    loop: bool = False,
-    realtime: bool = True,
-    model: Optional[SensorModel] = None,
-) -> Iterator[ImuSample]:
-    """Synthetic samples with ground truth.
-
-    `realtime=False` runs flat out, which is what the tests want; the
-    publisher wants the wall-clock pacing so the visualizer looks right.
-    """
-    t_offset = 0.0
-    while True:
-        wall_start = time.monotonic()
-        for sample in simulate(
-            duration=duration, rate_hz=rate_hz, model=model, t_start=t_offset
-        ):
-            if realtime:
-                target = wall_start + (sample.t - t_offset)
-                delay = target - time.monotonic()
-                if delay > 0:
-                    time.sleep(delay)
-            yield sample
-        if not loop:
-            return
-        t_offset += duration
 
 
 def iter_serial(
@@ -61,7 +29,7 @@ def iter_serial(
         import serial  # pyserial
     except ImportError as exc:
         raise SystemExit(
-            "pyserial is required for --source serial.\n"
+            "pyserial is required to read the serial port.\n"
             "    pip install -r rpi_scripts/requirements.txt"
         ) from exc
 

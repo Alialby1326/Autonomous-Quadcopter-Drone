@@ -21,9 +21,8 @@ real-time system and a UART round-trip through it would add latency and jitter
 to the one loop that cannot tolerate either — and the drone stays controllable
 if the Pi hangs, reboots, or is simply not plugged in.
 
-The Python attitude filter in `rpi_scripts/` is a **development and validation
-tool**, not the flight path: it is where the estimator gets tested against known
-ground truth before being ported to C.
+The Python tools in `rpi_scripts/` record and plot what the board sends; they
+are not in the flight path.
 
 ```
 STM32 (100 Hz, deterministic)          Raspberry Pi / laptop (best-effort)
@@ -37,8 +36,7 @@ what is still planned — is in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Building the firmware
 
-STM32CubeIDE still works as before, and remains the debugger and flasher. There
-is also a command-line build:
+command-line build:
 
 ```sh
 sudo apt install gcc-arm-none-eabi cmake ninja-build
@@ -70,33 +68,26 @@ the UART and every sample is transmitted rather than every tenth.
 
 ```sh
 cd rpi_scripts
-python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ```sh
-# synthetic data with known ground truth -- no hardware needed
-./.venv/bin/python publish_imu.py --source sim
-./.venv/bin/python visualize_attitude.py
+# record the board, then watch it live or replay the capture
+python record_log.py --port /dev/ttyUSB0 --output flight.log
+python visualize_imu.py --port /dev/ttyUSB0
+python visualize_imu.py --log flight.log --loop
 
-# replay a recording, or watch the real board
-./.venv/bin/python publish_imu.py --source log --log flight.log --loop
-./.venv/bin/python publish_imu.py --source serial --port /dev/ttyUSB0
-./.venv/bin/python record_log.py --port /dev/ttyUSB0 --output flight.log
-
-./.venv/bin/python -m pytest tests/
+python -m pytest tests/
 ```
 
-`--source sim` generates a scripted maneuver, derives the accelerometer,
-gyroscope and magnetometer readings that maneuver implies, and adds realistic
-noise, bias and quantization. Because the true attitude is known at every step,
-the visualizer draws the estimate against a ground-truth ghost and plots the
-error — which is the difference between "the filter runs" and "the filter is
-right".
+The visualizer plots raw accelerometer, gyroscope and magnetometer readings
+with no filtering, plus the on-device sample rate and any health flags — it is
+for checking the hardware, not estimating attitude.
 
-- `droneviz/telemetry.py` — wire format, `ImuSample`, ZeroMQ transport
-- `droneviz/sources.py` — serial / log / simulator, one sample stream
-- `droneviz/simulate.py` — trajectories and the sensor model
-- `droneviz/attitude.py` — quaternion complementary filter, written to port to C
+- `droneviz/telemetry.py` — wire format and `ImuSample`
+- `droneviz/sources.py` — serial / log, one sample stream
+- `tests/test_wire_contract.py` — fails if the C and Python copies of the
+  wire format drift apart
 
 ## Frames
 
@@ -105,8 +96,6 @@ the accelerometer reads ≈ (0, 0, +9.81). The AK8963 magnetometer's die is bond
 in rotated relative to the accel/gyro, so the driver remaps it
 (`mag X → accel Y`, `mag Y → accel X`, `mag Z → −accel Z`) — everything
 downstream sees one consistent frame.
-
-World frame for the host filter is NWU: X magnetic north, Y west, Z up.
 
 ### Phase 1: Control testing
 The STM32 Blackpill is being used to run control logic for the IMU. Once this is tested, the PID controller should be written, and the Raspberry Pi must be ready to handle commands and communicate them to the STM32 via UART.
@@ -119,11 +108,11 @@ The STM32 Blackpill is being used to run control logic for the IMU. Once this is
 - [x] AK8963 factory sensitivity (ASA) calibration and axis remapping
 - [x] Gyro bias calibration at boot
 - [x] Non-blocking DMA telemetry, one line per sample, microsecond timestamps
-- [x] Python attitude filter validated against a ground-truth simulator
-- [x] Python script to visualize drone orientation
+- [x] Python scripts to record and plot the raw IMU stream
 - [ ] Hard-iron / soft-iron magnetometer calibration (redo after the PCB exists)
-- [ ] Port the complementary filter from `droneviz/attitude.py` to C
+- [ ] Confirm the IMU stream on hardware with `record_log.py` (magnetometer still reads zero)
 - [ ] Write PID controller on STM32
+- [ ] Attitude estimation on the STM32
 - [ ] Four synchronized ESC channels on TIM3 (PA6/PA7/PB0/PB1), plus arming and failsafe
 
 Goal for phase 1:

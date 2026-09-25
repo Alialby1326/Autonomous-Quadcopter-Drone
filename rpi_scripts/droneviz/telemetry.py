@@ -1,4 +1,4 @@
-"""Wire format and transport for IMU samples.
+"""Wire format for IMU samples.
 
 The STM32 emits one line per sample over UART:
 
@@ -23,12 +23,10 @@ Keep FLAG_* in sync with Core/Inc/imu.h.
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
-import zmq
 
 # Telemetry health flags. Mirror of the TLM_FLAG_* defines in Core/Inc/imu.h.
 FLAG_IMU_ERROR = 1 << 0  # accel/gyro I2C transfer failed; values are stale
@@ -48,9 +46,6 @@ FLAG_NAMES = {
 FRAME_PREFIX = "I"
 FRAME_FIELDS = 12  # prefix + timestamp + 9 axes + flags
 
-DEFAULT_ENDPOINT = "tcp://127.0.0.1:5555"
-TOPIC = "IMU"
-
 
 def describe_flags(flags: int) -> str:
     """Render a flags word as a readable string, for logs and the HUD."""
@@ -68,12 +63,7 @@ def describe_flags(flags: int) -> str:
 
 @dataclass(frozen=True)
 class ImuSample:
-    """One synchronized 9-axis reading.
-
-    `truth` carries ground-truth (roll, pitch, yaw) in radians and is populated
-    only by the simulator. Real hardware has no such thing, which is exactly
-    why the simulator is worth having.
-    """
+    """One synchronized 9-axis reading."""
 
     t: float  # seconds since device boot
     ax: float
@@ -86,7 +76,6 @@ class ImuSample:
     my: float
     mz: float
     flags: int = 0
-    truth: Optional[Sequence[float]] = field(default=None)
 
     @property
     def accel(self) -> np.ndarray:
@@ -99,11 +88,6 @@ class ImuSample:
         return np.array([self.gx, self.gy, self.gz], dtype=float)
 
     @property
-    def gyro(self) -> np.ndarray:
-        """Angular rate in rad/s, which is what the filter wants."""
-        return np.radians(self.gyro_dps)
-
-    @property
     def mag(self) -> np.ndarray:
         """Magnetic field, uT, body frame."""
         return np.array([self.mx, self.my, self.mz], dtype=float)
@@ -112,30 +96,6 @@ class ImuSample:
     def mag_valid(self) -> bool:
         """False when the magnetometer had nothing new or useful to say."""
         return not (self.flags & (FLAG_MAG_STALE | FLAG_MAG_OVERFLOW))
-
-    def to_dict(self) -> dict:
-        d = {
-            "t": self.t,
-            "ax": self.ax, "ay": self.ay, "az": self.az,
-            "gx": self.gx, "gy": self.gy, "gz": self.gz,
-            "mx": self.mx, "my": self.my, "mz": self.mz,
-            "flags": self.flags,
-        }
-        if self.truth is not None:
-            d["truth"] = [float(v) for v in self.truth]
-        return d
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "ImuSample":
-        truth = d.get("truth")
-        return cls(
-            t=d["t"],
-            ax=d["ax"], ay=d["ay"], az=d["az"],
-            gx=d["gx"], gy=d["gy"], gz=d["gz"],
-            mx=d["mx"], my=d["my"], mz=d["mz"],
-            flags=d.get("flags", 0),
-            truth=tuple(truth) if truth is not None else None,
-        )
 
 
 def format_line(sample: ImuSample) -> str:
@@ -177,65 +137,3 @@ def parse_line(line: str) -> Optional[ImuSample]:
 
     return ImuSample(t_us / 1e6, *values, flags=flags)
 
-
-class Publisher:
-    """ZeroMQ PUB side: one message per sample, all nine axes together.
-
-    The previous design published ACCEL/GYRO/MAG as three separate messages on
-    three topics, which left the subscriber with no way to know which readings
-    belonged to the same instant -- and in practice it only ever subscribed to
-    one of them. A sample is one thing; it travels as one message.
-    """
-
-    def __init__(self, endpoint: str = DEFAULT_ENDPOINT):
-        self.context = zmq.Context.instance()
-        self.socket = self.context.socket(zmq.PUB)
-        self.socket.bind(endpoint)
-        self.endpoint = endpoint
-
-    def send(self, sample: ImuSample) -> None:
-        self.socket.send_string(TOPIC, flags=zmq.SNDMORE)
-        self.socket.send_string(json.dumps(sample.to_dict()))
-
-    def close(self) -> None:
-        self.socket.close()
-
-
-class Subscriber:
-    """ZeroMQ SUB side."""
-
-    def __init__(self, endpoint: str = DEFAULT_ENDPOINT):
-        self.context = zmq.Context.instance()
-        self.socket = self.context.socket(zmq.SUB)
-        self.socket.connect(endpoint)
-        self.socket.setsockopt_string(zmq.SUBSCRIBE, TOPIC)
-        # Deliberately not CONFLATE: the filter needs every sample to integrate
-        # correctly, and drain() below hands the whole backlog to it each frame.
-        # The high-water mark bounds memory if the consumer stalls outright.
-        self.socket.setsockopt(zmq.RCVHWM, 1000)
-
-    def poll(self, timeout_ms: int = 0) -> Optional[ImuSample]:
-        """Return the next sample, or None if none arrived within the timeout."""
-        if not self.socket.poll(timeout_ms):
-            return None
-        self.socket.recv_string()  # topic
-        payload = self.socket.recv_string()
-        return ImuSample.from_dict(json.loads(payload))
-
-    def drain(self, max_samples: int = 64) -> list:
-        """Return every sample currently queued, up to a cap.
-
-        The visualizer runs at ~30 fps against a 100+ Hz stream, so each frame
-        it must consume several samples -- feeding them all through the filter
-        rather than dropping them is what keeps the estimate correct.
-        """
-        out = []
-        while len(out) < max_samples:
-            sample = self.poll(0)
-            if sample is None:
-                break
-            out.append(sample)
-        return out
-
-    def close(self) -> None:
-        self.socket.close()

@@ -100,3 +100,44 @@ def test_firmware_buffer_is_large_enough_for_a_worst_case_frame():
     )
     needed = len(worst) + 1 + 1  # newline + NUL
     assert size >= needed, f"line[{size}] is too small; worst case needs {needed}"
+
+
+# -- host-side parser --------------------------------------------------------
+
+
+def test_wire_format_roundtrip():
+    original = telemetry.ImuSample(
+        t=1.234567, ax=0.5, ay=-1.25, az=9.81,
+        gx=10.0, gy=-20.5, gz=0.25,
+        mx=12.3, my=-45.6, mz=7.89, flags=telemetry.FLAG_MAG_STALE,
+    )
+    parsed = telemetry.parse_line(telemetry.format_line(original))
+    assert parsed is not None
+    assert parsed.t == pytest.approx(original.t, abs=1e-6)
+    assert parsed.accel == pytest.approx(original.accel)
+    assert parsed.gyro_dps == pytest.approx(original.gyro_dps)
+    assert parsed.mag == pytest.approx(original.mag)
+    assert parsed.flags == original.flags
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "",
+        "hello",
+        "I,123",                              # truncated
+        "I,123,1,2,3,4,5,6,7,8,9",            # missing flags
+        "I,123,1,2,3,4,5,6,7,8,9,0,extra",    # too many fields
+        "I,abc,1,2,3,4,5,6,7,8,9,0",          # bad timestamp
+        "ACCELEROMETER: X: 0, Y: 0, Z: 9",    # legacy format
+        "\x00\xff garbage",                   # baud mismatch
+    ],
+)
+def test_parse_line_rejects_junk(line):
+    assert telemetry.parse_line(line) is None
+
+
+def test_mag_valid_reflects_flags():
+    base = dict(t=0.0, ax=0, ay=0, az=9.81, gx=0, gy=0, gz=0, mx=1, my=2, mz=3)
+    assert telemetry.ImuSample(**base).mag_valid
+    assert not telemetry.ImuSample(**base, flags=telemetry.FLAG_MAG_STALE).mag_valid

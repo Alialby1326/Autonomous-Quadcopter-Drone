@@ -23,7 +23,7 @@ subgraph group_fw["STM32F401 Firmware · 84 MHz · the only flight-critical path
   subgraph group_loop["100 Hz control loop · main.c"]
     direction TB
     node_flight_loop["Scheduler<br/>signed-diff timing, overrun flag"]
-    node_est_c["Attitude estimator<br/>(C port of attitude.py)"]
+    node_est_c["Attitude estimator"]
     node_pid["PID + motor mixer"]
   end
 
@@ -51,21 +51,11 @@ subgraph group_host["Host / Raspberry Pi · rpi_scripts/ (outside the flight loo
     direction TB
     node_src_serial["iter_serial"]
     node_src_log["iter_log"]
-    node_src_sim["iter_sim"]
   end
-  node_simulator["Simulator<br/>ground-truth trajectory → derived sensors<br/>[simulate.py]"]
 
-  node_publisher["Publisher CLI<br/>--source sim | log | serial<br/>[publish_imu.py]"]
-  node_codec["Wire codec + ZeroMQ PUB/SUB<br/>parse_line · format_line · ImuSample<br/>[telemetry.py]"]
-  node_zmq(["ZeroMQ · tcp://127.0.0.1:5555"])
-  node_visualizer["3D attitude visualizer<br/>+ ground-truth ghost<br/>[visualize_attitude.py]"]
-  node_attitude["Complementary filter<br/>reference impl, numpy only<br/>[attitude.py]"]
-
-  subgraph group_tests["pytest · tests/"]
-    direction TB
-    node_test_att["test_attitude.py<br/>bounded error vs. truth"]
-    node_test_wire["test_wire_contract.py<br/>C ↔ Python drift check"]
-  end
+  node_codec["Wire format<br/>parse_line · format_line · ImuSample<br/>[telemetry.py]"]
+  node_visualizer["Raw IMU plots<br/>accel · gyro · mag · flags<br/>[visualize_imu.py]"]
+  node_test_wire["test_wire_contract.py<br/>C ↔ Python drift check"]
 end
 
 subgraph group_planned["Planned on the Pi"]
@@ -100,22 +90,16 @@ node_link -->|"serial"| node_recorder
 node_link -->|"serial"| node_src_serial
 node_recorder --> node_logfile
 node_logfile --> node_src_log
-node_simulator -->|"samples + truth"| node_src_sim
-node_src_serial & node_src_log & node_src_sim --> node_publisher
-node_publisher -->|"Publisher.send"| node_codec
-node_codec -->|"PUB"| node_zmq
-node_zmq -->|"SUB"| node_visualizer
-node_visualizer -->|"update(sample, dt)"| node_attitude
+node_src_serial & node_src_log --> node_visualizer
+node_codec -.->|"parse_line"| node_recorder
+node_codec -.->|"parse_line"| node_src_serial
 
-%% ─── Validation and porting ───
-node_simulator -.->|"truth"| node_test_att
-node_attitude -.-> node_test_att
+%% ─── Contract check ───
 node_test_wire -.->|"reads source"| node_telemetry
 node_test_wire -.->|"compares"| node_codec
-node_attitude ==>|"validated, then ported to C"| node_est_c
 
 %% ─── Operator and planned control ───
-node_operator -->|"runs"| node_publisher
+node_operator -->|"runs"| node_visualizer
 node_operator -->|"runs"| node_recorder
 node_operator -.->|"commands"| node_setpoints
 node_nav_cv -.-> node_setpoints
@@ -132,8 +116,8 @@ classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
 classDef planned fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:5 4,color:#475569
 
 class node_flight_loop,node_timebase,node_imu_driver,node_i2c,node_adc,node_pwm_led,node_telemetry,node_uart toneBlue
-class node_recorder,node_logfile,node_src_serial,node_src_log,node_src_sim,node_simulator,node_publisher,node_codec,node_zmq,node_visualizer,node_attitude toneAmber
-class node_test_att,node_test_wire toneTeal
+class node_recorder,node_logfile,node_src_serial,node_src_log,node_codec,node_visualizer toneAmber
+class node_test_wire toneTeal
 class node_link toneRose
 class node_mpu,node_analog,node_leds,node_operator toneIndigo
 class node_est_c,node_pid,node_pwm_esc,node_escs,node_nav_cv,node_setpoints planned

@@ -155,9 +155,7 @@ int main(void)
   IMU_Status imu_status = IMU_Init(&hi2c1, &imu);
   report_imu_status(imu_status);
 
-  /* Estimate and remove the gyro's zero offset. It must be measured with the
-   * vehicle stationary, so it happens once at boot -- any movement during this
-   * second is recorded as bias and subtracted from every later reading. */
+
   if (imu_status == IMU_OK)
   {
     Telemetry_Print("# calibrating gyro, hold still\n");

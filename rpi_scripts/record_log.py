@@ -3,7 +3,7 @@
 
     python3 record_log.py --port /dev/ttyUSB0 --output flight.log
 
-Writes the wire format verbatim, so `publish_imu.py --source log` can replay
+Writes the wire format verbatim, so `visualize_imu.py --log` can replay
 the recording with the device's own timing rather than a guess at it.
 
 This is also the tool that captures data for magnetometer hard-iron

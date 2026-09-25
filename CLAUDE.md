@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Firmware for an STM32F401CCU6 "Blackpill" flight controller (MPU9250 IMU over I2C, telemetry
-over UART) plus host-side Python tooling in `rpi_scripts/` for simulating, recording, and
-visualizing that telemetry.
+over UART) plus host-side Python tooling in `rpi_scripts/` for recording and plotting that
+telemetry.
 
 ## Commands
 
@@ -34,17 +34,11 @@ cd rpi_scripts
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 
 ./.venv/bin/python -m pytest                      # all tests
-./.venv/bin/python -m pytest tests/test_attitude.py::test_filter_tracks_the_full_maneuver  # one test
-
-# terminal 1 — pick a source
-./.venv/bin/python publish_imu.py --source sim                          # synthetic + ground truth
-./.venv/bin/python publish_imu.py --source log --log flight.log --loop
-./.venv/bin/python publish_imu.py --source serial --port /dev/ttyUSB0
-
-# terminal 2
-./.venv/bin/python visualize_attitude.py
+./.venv/bin/python -m pytest tests/test_wire_contract.py::test_flag_definitions_match  # one test
 
 ./.venv/bin/python record_log.py --port /dev/ttyUSB0 --output flight.log
+./.venv/bin/python visualize_imu.py --port /dev/ttyUSB0          # live raw plots
+./.venv/bin/python visualize_imu.py --log flight.log --loop      # replay a capture
 ```
 
 Tests are pure host code — no toolchain, no board. `pytest.ini` sets `pythonpath = .`, so
@@ -56,9 +50,9 @@ The attitude estimator and PID run **on the STM32**, as one deterministic loop:
 IMU → attitude → PID → PWM. The Raspberry Pi sits outside that loop (setpoints, logging,
 CV) so the aircraft stays controllable if the Pi hangs or is absent.
 
-Consequently **`rpi_scripts/droneviz/attitude.py` is not the flight path** — it is where the
-estimator is validated against known ground truth before being ported to C. Keep it portable:
-numpy only, no scipy, no constructs that won't translate to a fixed-rate C loop.
+Neither the attitude estimator nor the PID exists yet. The PID comes first; filter work
+waits until there is a controller to feed and hardware data to check it against. The host
+tools only record and plot the raw stream — no filtering, no simulator.
 
 ### The seam between the two halves
 
@@ -74,17 +68,16 @@ bits are defined **twice** — `Core/Src/telemetry.c` + `Core/Inc/imu.h` in C, a
 source and fails if they drift, including whether the C frame buffer still fits a worst-case
 line. Change one side and run that test.
 
-`sources.py` normalizes serial / log / simulator into one `Iterator[ImuSample]`, so the
-filter, tests, and visualizer are exercised identically regardless of origin. `simulate.py`
-generates a ground-truth attitude trajectory and *derives* the sensor readings it implies —
-that's what lets tests assert bounded estimation error rather than merely "it ran".
+`sources.py` turns serial or a recorded log into one `Iterator[ImuSample]`, so the
+visualizer treats live and replayed data identically. `iter_log` also reads the older
+three-line `ACCELEROMETER:/GYROSCOPE:/MAGNETOMETER:` format in `sim_imu.log`.
 
 ### Frames
 
 Body frame is the MPU9250's: **X forward, Y left, Z up**; level and at rest the accelerometer
 reads ≈ (0, 0, +9.81). Positive roll about +X carries +Y toward +Z, so a right bank puts
 gravity on **positive** body Y — this is counterintuitive and has already caused one wrong
-test. World frame for the host filter is **NWU** (X magnetic north, Y west, Z up).
+test.
 
 The AK8963 die is bonded rotated relative to the accel/gyro, so `imu.c` remaps it
 (`mag X → accel Y`, `mag Y → accel X`, `mag Z → −accel Z`). Everything downstream sees one
@@ -131,7 +124,7 @@ TIM2/TIM4 PWM. Clock: 8 MHz HSE → 84 MHz.
 
 ## Status
 
-Everything above is verified in simulation and on a clean build; **the current firmware has
+Everything above is verified on a clean build and by the host tests; **the current firmware has
 not yet been run on hardware.** The magnetometer has never produced non-zero data on the
 board, and the printf-float and mag-axis fixes are unconfirmed there. Treat sensor-facing
 claims as untested until a `record_log.py` capture says otherwise.
