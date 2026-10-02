@@ -16,14 +16,6 @@ loop: read IMU → estimate attitude → PID → motor PWM. The Raspberry Pi sit
 outside that loop and sends setpoints, logs telemetry, and will eventually run
 navigation and computer vision.
 
-The inner control loop deliberately does not depend on the Pi. Linux is not a
-real-time system and a UART round-trip through it would add latency and jitter
-to the one loop that cannot tolerate either — and the drone stays controllable
-if the Pi hangs, reboots, or is simply not plugged in.
-
-The Python tools in `rpi_scripts/` record and plot what the board sends; they
-are not in the flight path.
-
 ```
 STM32 (100 Hz, deterministic)          Raspberry Pi / laptop (best-effort)
   IMU -> attitude -> PID -> PWM  --->    logging, visualization, tuning
