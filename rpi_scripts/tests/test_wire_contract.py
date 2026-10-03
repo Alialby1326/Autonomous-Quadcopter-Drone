@@ -141,3 +141,9 @@ def test_mag_valid_reflects_flags():
     base = dict(t=0.0, ax=0, ay=0, az=9.81, gx=0, gy=0, gz=0, mx=1, my=2, mz=3)
     assert telemetry.ImuSample(**base).mag_valid
     assert not telemetry.ImuSample(**base, flags=telemetry.FLAG_MAG_STALE).mag_valid
+
+
+def test_timestamp_outside_32_bit_counter_is_rejected():
+    # A real corrupt line from imu.log: an 11-digit stamp TIM5 can't produce.
+    assert telemetry.parse_line("I,42478747815,0.7302,0.3448,9.1506,-7.3225,32.9741,18.4180,-12.592,-21.516,-48.216,0") is None
+    assert telemetry.parse_line("I,4294967295,0,0,9.8,0,0,0,0,0,0,0") is not None

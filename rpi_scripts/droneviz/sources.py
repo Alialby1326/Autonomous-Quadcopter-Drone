@@ -7,7 +7,7 @@ differ by one command-line flag.
 
 from __future__ import annotations
 
-import re
+import sys
 import time
 from typing import Iterator
 
@@ -52,24 +52,24 @@ def iter_log(
 ) -> Iterator[ImuSample]:
     """Replay a recorded log, paced by the timestamps inside it.
 
-    Handles both the current wire format and the older three-line
-    `ACCELEROMETER:/GYROSCOPE:/MAGNETOMETER:` capture (see `_iter_legacy_log`).
+    Replayed time starts at 0 and only moves forward; see `_continuous_times`.
     """
     with open(path, "r") as handle:
         text = handle.read()
 
     samples = [s for s in (parse_line(line) for line in text.splitlines()) if s]
     if not samples:
-        samples = list(_iter_legacy_log(text))
-    if not samples:
         raise SystemExit(f"no IMU samples found in {path}")
+
+    times, splices = _continuous_times(samples)
+    if splices:
+        print(f"{path}: spliced {splices} timestamp discontinuities "
+              "(board reset, counter wrap or corrupt line)", file=sys.stderr)
 
     t_offset = 0.0
     while True:
         wall_start = time.monotonic()
-        base = samples[0].t
-        for sample in samples:
-            elapsed = sample.t - base
+        for sample, elapsed in zip(samples, times):
             if realtime and speed > 0:
                 delay = wall_start + elapsed / speed - time.monotonic()
                 if delay > 0:
@@ -83,5 +83,32 @@ def iter_log(
             )
         if not loop:
             return
-        t_offset += samples[-1].t - base
+        t_offset += times[-1]
+
+
+MAX_GAP_S = 1.0  # longer than any plausible loop period; anything beyond is a break
+
+
+def _continuous_times(samples: list[ImuSample]) -> tuple[list[float], int]:
+    """Replay times for `samples`, starting at 0, with discontinuities spliced out.
+
+    A log can contain a board reset (time jumps back), a TIM5 wrap every
+    ~71.6 min (also back), or a line garbled on the wire that still parses
+    (one wild stamp, then a jump back). Pacing against raw timestamps sleeps
+    for hours at a forward jump and plays everything after a backward one
+    instantly. Each such step is replaced with the log's typical step instead,
+    so playback stays continuous and the sample data is kept.
+    """
+    steps = [b.t - a.t for a, b in zip(samples, samples[1:])]
+    good = sorted(d for d in steps if 0 <= d <= MAX_GAP_S)
+    nominal = good[len(good) // 2] if good else 0.01
+
+    times = [0.0]
+    splices = 0
+    for step in steps:
+        if not 0 <= step <= MAX_GAP_S:
+            step = nominal
+            splices += 1
+        times.append(times[-1] + step)
+    return times, splices
 

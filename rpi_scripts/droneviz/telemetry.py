@@ -134,6 +134,8 @@ def parse_line(line: str) -> Optional[ImuSample]:
         flags = int(parts[11])
     except ValueError:
         return None
+    if not 0 <= t_us <= 0xFFFFFFFF:
+        return None  # TIM5 is 32-bit; anything else was corrupted on the wire
 
     return ImuSample(t_us / 1e6, *values, flags=flags)
 
