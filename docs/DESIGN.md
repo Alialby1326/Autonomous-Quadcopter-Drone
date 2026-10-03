@@ -54,7 +54,7 @@ subgraph group_host["Host / Raspberry Pi · rpi_scripts/ (outside the flight loo
   end
 
   node_codec["Wire format<br/>parse_line · format_line · ImuSample<br/>[telemetry.py]"]
-  node_visualizer["Raw IMU plots<br/>accel · gyro · mag · flags<br/>[visualize_imu.py]"]
+  node_visualizer["Attitude comparison<br/>3D model · roll/pitch · |a|/g<br/>[visualize_attitude.py + attitude.py]"]
   node_test_wire["test_wire_contract.py<br/>C ↔ Python drift check"]
 end
 

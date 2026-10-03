@@ -37,8 +37,8 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 ./.venv/bin/python -m pytest tests/test_wire_contract.py::test_flag_definitions_match  # one test
 
 ./.venv/bin/python record_log.py --port /dev/ttyUSB0 --output flight.log
-./.venv/bin/python visualize_imu.py --port /dev/ttyUSB0          # live raw plots
-./.venv/bin/python visualize_imu.py --log flight.log --loop      # replay a capture
+./.venv/bin/python visualize_attitude.py --port /dev/ttyUSB0          # live attitude
+./.venv/bin/python visualize_attitude.py --log flight.log --loop      # replay a capture
 ```
 
 Tests are pure host code — no toolchain, no board. `pytest.ini` sets `pythonpath = .`, so
@@ -52,7 +52,9 @@ CV) so the aircraft stays controllable if the Pi hangs or is absent.
 
 Neither the attitude estimator nor the PID exists yet. The PID comes first; filter work
 waits until there is a controller to feed and hardware data to check it against. The host
-tools only record and plot the raw stream — no filtering, no simulator.
+tools record the raw stream and compare host-side attitude estimators on it
+(`droneviz/attitude.py`, registered in `ESTIMATORS`); `tests/test_attitude.py` pins every
+estimator's sign convention. No simulator.
 
 ### The seam between the two halves
 
@@ -69,8 +71,7 @@ source and fails if they drift, including whether the C frame buffer still fits 
 line. Change one side and run that test.
 
 `sources.py` turns serial or a recorded log into one `Iterator[ImuSample]`, so the
-visualizer treats live and replayed data identically. `iter_log` also reads the older
-three-line `ACCELEROMETER:/GYROSCOPE:/MAGNETOMETER:` format in `sim_imu.log`.
+visualizer treats live and replayed data identically.
 
 ### Frames
 

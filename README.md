@@ -66,18 +66,21 @@ pip install -r requirements.txt
 ```sh
 # record the board, then watch it live or replay the capture
 python record_log.py --port /dev/ttyUSB0 --output flight.log
-python visualize_imu.py --port /dev/ttyUSB0
-python visualize_imu.py --log flight.log --loop
+python visualize_attitude.py --port /dev/ttyUSB0
+python visualize_attitude.py --log flight.log --loop
 
 python -m pytest tests/
 ```
 
-The visualizer plots raw accelerometer, gyroscope and magnetometer readings
-with no filtering, plus the on-device sample rate and any health flags — it is
-for checking the hardware, not estimating attitude.
+The visualizer runs every attitude estimator in `droneviz/attitude.py` on the
+same samples and draws them side by side: a 3D quadcopter, roll and pitch over
+time, and |a|/g to show when the accelerometer is seeing more than gravity.
+It is a host-side bench for comparing estimator math, not the flight estimator.
 
 - `droneviz/telemetry.py` — wire format and `ImuSample`
 - `droneviz/sources.py` — serial / log, one sample stream
+- `droneviz/attitude.py` — attitude estimators under comparison
+- `tests/test_attitude.py` — pins every estimator's roll/pitch sign convention
 - `tests/test_wire_contract.py` — fails if the C and Python copies of the
   wire format drift apart
 
