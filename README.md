@@ -17,7 +17,7 @@ outside that loop and sends setpoints, logs telemetry, and will eventually run
 navigation and computer vision.
 
 ```
-STM32 (100 Hz, deterministic)          Raspberry Pi / laptop (best-effort)
+STM32                                    Raspberry Pi / laptop 
   IMU -> attitude -> PID -> PWM  --->    logging, visualization, tuning
          ^                               nav / CV (future)
          |  setpoints
