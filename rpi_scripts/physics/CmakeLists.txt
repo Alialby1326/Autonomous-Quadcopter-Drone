@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.16)
+project(QuadPhysics LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+#default to release with -O3 compile, unless specified otherwise
+add_compile_options(-Wall -Wextra)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
+add_executable(quadPhys main.cpp)
+
+target_include_directories(quadPhys PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(quadPhys PRIVATE Eigen3::Eigen)
