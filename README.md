@@ -49,7 +49,7 @@ I,<t_us>,<ax>,<ay>,<az>,<gx>,<gy>,<gz>,<mx>,<my>,<mz>,<flags>
 ```
 
 Units are m/s², deg/s and µT; `t_us` is microseconds from the free-running TIM5
-counter. `flags` reports health — I2C failure, stale or saturated magnetometer,
+counter. `flags` reports health — IMU bus (SPI) failure, stale or saturated magnetometer,
 loop overrun, uncalibrated gyro — so a frozen sensor is visible in the stream
 instead of looking like steady level flight.
 

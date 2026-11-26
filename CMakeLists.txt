@@ -38,8 +38,6 @@ add_executable(${PROJECT_NAME}.elf
     Core/Src/timebase.c
     Core/Src/motors.c
     Core/Src/gpio.c
-    Core/Src/i2c.c
-    Core/Src/spi.c
     Core/Src/usart.c
     Core/Src/stm32f4xx_hal_msp.c
     Core/Src/stm32f4xx_it.c

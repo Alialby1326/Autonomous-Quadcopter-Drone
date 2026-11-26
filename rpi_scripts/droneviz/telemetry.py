@@ -29,7 +29,7 @@ from typing import Optional
 import numpy as np
 
 # Telemetry health flags. Mirror of the TLM_FLAG_* defines in Core/Inc/imu.h.
-FLAG_IMU_ERROR = 1 << 0  # accel/gyro I2C transfer failed; values are stale
+FLAG_IMU_ERROR = 1 << 0  # accel/gyro SPI transfer failed; values are stale
 FLAG_MAG_STALE = 1 << 1  # no new magnetometer sample this cycle (mag runs slower)
 FLAG_MAG_OVERFLOW = 1 << 2  # AK8963 HOFL set; field saturated, sample discarded
 FLAG_LOOP_OVERRUN = 1 << 3  # the control loop missed its deadline

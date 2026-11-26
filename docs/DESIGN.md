@@ -41,7 +41,7 @@ subgraph group_fw["STM32F401 Firmware · 84 MHz · the only flight-critical path
 
   node_timebase["µs Timebase · TIM5 1 MHz<br/>[timebase.c]"]
   node_imu_driver["IMU driver<br/>gyro cal · mag axis remap<br/>[imu.c]"]
-  node_i2c["I2C1 · 400 kHz<br/>PB6 / PB7 [i2c.c]"]
+  node_spi["SPI2 · mode 3<br/>≤1 MHz regs, 5.25 MHz data reads<br/>PB13–15, CS PB12 [imu.c]"]
   node_motors["Motors · TIM3 · 4 ch ESC PWM<br/>1000–2000 µs @ 400 Hz<br/>PA6 / PA7 / PB0 / PB1 [motors.c]"]
   node_telemetry["Telemetry ring buffer [telemetry.c]"]
   node_uart["USART1 TX · DMA2 Stream 7<br/>PA9 [telemetry.c + usart.c]"]
@@ -67,7 +67,7 @@ end
 %% ───────────────────────── Board hardware ─────────────────────────
 subgraph group_hw["Board Hardware"]
   direction TB
-  node_mpu[("MPU9250<br/>accel + gyro<br/>+ AK8963 mag")]
+  node_mpu[("MPU9250<br/>accel + gyro<br/>+ AK8963 mag, polled by<br/>its internal I²C master")]
   node_leds["LEDs<br/>(stand-in for motors)"]
   node_escs["ESCs + Motors<br/>(not yet wired)"]
 end
@@ -82,7 +82,7 @@ node_recorder ~~~ node_src_serial
 node_visualizer ~~~ node_link
 node_flight_loop ~~~ node_timebase
 node_flight_loop ~~~ node_imu_driver
-node_imu_driver ~~~ node_i2c
+node_imu_driver ~~~ node_spi
 node_setpoints ~~~ node_test_wire
 
 %% ─── Operator and planned control ───
@@ -97,8 +97,8 @@ node_test_wire -.->|"compares"| node_codec
 node_test_wire -.->|"reads source"| node_telemetry
 
 %% ─── Firmware data path ───
-node_i2c <-->|"I²C regs"| node_mpu
-node_i2c --> node_imu_driver
+node_spi <-->|"one 22-byte burst:<br/>accel · temp · gyro · EXT_SENS mag"| node_mpu
+node_spi --> node_imu_driver
 node_imu_driver -->|"IMU_ReadAll → MPU9250_Data"| node_flight_loop
 node_timebase -->|"Timebase_Micros() → t_us"| node_flight_loop
 node_flight_loop -->|"Telemetry_SendImu (memcpy)"| node_telemetry
@@ -132,7 +132,7 @@ classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
 classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
 classDef planned fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:5 4,color:#475569
 
-class node_flight_loop,node_timebase,node_imu_driver,node_i2c,node_motors,node_telemetry,node_uart toneBlue
+class node_flight_loop,node_timebase,node_imu_driver,node_spi,node_motors,node_telemetry,node_uart toneBlue
 class node_recorder,node_logfile,node_src_serial,node_src_log,node_codec,node_visualizer toneAmber
 class node_test_wire toneTeal
 class node_link toneRose

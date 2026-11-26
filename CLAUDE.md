@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Firmware for an STM32F401CCU6 "Blackpill" flight controller (MPU9250 IMU over I2C, telemetry
+Firmware for an STM32F401CCU6 "Blackpill" flight controller (MPU9250 IMU over SPI, telemetry
 over UART) plus host-side Python tooling in `rpi_scripts/` for recording and plotting that
 telemetry.
 
@@ -84,6 +84,12 @@ reads ≈ (0, 0, +9.81). Positive roll about +X carries +Y toward +Z, so a right
 gravity on **positive** body Y — this is counterintuitive and has already caused one wrong
 test.
 
+Over SPI the AK8963 magnetometer can't be addressed directly: it sits on the MPU9250's
+internal I2C bus. `imu.c` uses the MPU's I2C master (slave 4 for one-shot setup, slave 0
+polling ST1..ST2 at 100 Hz into `EXT_SENS_DATA`), so `IMU_ReadAll` gets accel, temp, gyro and
+mag in one 22-byte burst. A sample can be flagged fresh on more than one loop iteration if the
+loop runs faster than 100 Hz.
+
 The AK8963 die is bonded rotated relative to the accel/gyro, so `imu.c` remaps it
 (`mag X → accel Y`, `mag Y → accel X`, `mag Z → −accel Z`). Everything downstream sees one
 frame.
@@ -99,15 +105,18 @@ verify in the CubeIDE GUI after touching `.cproject`.
 **CubeMX regeneration.** The project is moving off CubeMX/CubeIDE: new hardware setup is
 written by hand in the module that uses it, with HAL calls, never added to the `.ioc`.
 Until the remaining peripherals are migrated, `drone_code.ioc` still regenerates
-`Core/Src/{gpio,i2c,spi,usart}.c`, `main.c` (outside `USER CODE` blocks), `stm32f4xx_it.c`
-and `stm32f4xx_hal_conf.h`. To survive that:
+`Core/Src/{gpio,usart}.c` (PC13 and USART1 only), `main.c` (clock and init calls, outside
+`USER CODE` blocks), `stm32f4xx_it.c`, `stm32f4xx_hal_msp.c` and `stm32f4xx_hal_conf.h`. To
+survive that:
 
 - `timebase.c`/`telemetry.c`/`motors.c`/`imu.c` are hand-written and unmanaged by CubeMX.
-- **TIM3, TIM5 and PA6/PA7/PB0/PB1 must stay unused in CubeMX.** `Motors_Init()` and
-  `Timebase_Init()` configure them; a generated `MX_TIM3_Init`/`MX_TIM5_Init` would collide.
-- **Regeneration disables HAL's TIM module.** No timer is configured in CubeMX, so it will
-  comment out `HAL_TIM_MODULE_ENABLED` in `stm32f4xx_hal_conf.h`, and `timebase.c`/`motors.c`
-  stop compiling. Re-enable that line after every regeneration.
+- **TIM3, TIM5, SPI2 and their pins (PA6/PA7/PB0/PB1, PB12–PB15) must stay unused in
+  CubeMX.** `Motors_Init()`, `Timebase_Init()` and `IMU_Init()` configure them; a generated
+  init function would collide.
+- **Regeneration disables HAL's TIM and SPI modules.** Neither is configured in CubeMX, so it
+  comments out `HAL_TIM_MODULE_ENABLED` and `HAL_SPI_MODULE_ENABLED` in
+  `stm32f4xx_hal_conf.h`, and `timebase.c`/`motors.c`/`imu.c` stop compiling. Re-enable both
+  after every regeneration.
 - **USART1 must have no DMA request and no NVIC entry in CubeMX** — `telemetry.c` sets up
   DMA2 Stream 7 itself and defines `DMA2_Stream7_IRQHandler`/`USART1_IRQHandler`, overriding
   the startup file's weak symbols. Enabling them in CubeMX produces a duplicate-symbol link
@@ -136,10 +145,10 @@ runs. Add that before connecting ESCs with propellers on.
 
 ## Hardware map
 
-I2C1 PB6/PB7 @ 400 kHz (MPU9250) · SPI2 PB13/PB14/PB15 + CS PB12 (IMU, refactor in
-progress) · USART1 PA9/PA10 (telemetry TX via DMA2 Stream 7) · TIM3 PA6/PA7/PB0/PB1 motor
-PWM · TIM5 microsecond timebase. ADC1, TIM2, TIM4 and DMA2 Stream 0 are unused. Clock:
-25 MHz HSE → 84 MHz.
+SPI2 mode 3, SCK PB13 / MISO PB14 / MOSI PB15 / CS PB12 (MPU9250; ≤1 MHz for register
+writes, 5.25 MHz for sensor reads) · USART1 PA9/PA10 (telemetry TX via DMA2 Stream 7) · TIM3
+PA6/PA7/PB0/PB1 motor PWM · TIM5 microsecond timebase · PC13 onboard LED. I2C1 (PB6/PB7, planned
+for the BMP280), ADC1, TIM2, TIM4 and DMA2 Stream 0 are unused. Clock: 25 MHz HSE → 84 MHz.
 
 ## Status
 

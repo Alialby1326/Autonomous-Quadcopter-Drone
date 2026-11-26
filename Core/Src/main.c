@@ -18,8 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "i2c.h"
-#include "spi.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -76,14 +74,14 @@ static void report_imu_status(IMU_Status status)
 		Telemetry_Print("# imu ok\n");
 		break;
 	case IMU_ERR_WHOAMI:
-		Telemetry_Print("# imu error: WHO_AM_I mismatch, not an MPU9250\n");
+		Telemetry_Print("# imu error: WHO_AM_I mismatch; not an MPU9250, or check SPI wiring\n");
 		break;
 	case IMU_ERR_MAG_WHOAMI:
-		Telemetry_Print("# imu error: AK8963 not responding; check I2C bypass\n");
+		Telemetry_Print("# imu error: AK8963 not answering the MPU9250's I2C master; mag disabled\n");
 		break;
-	case IMU_ERR_I2C:
+	case IMU_ERR_BUS:
 	default:
-		Telemetry_Print("# imu error: I2C transfer failed; check wiring and pull-ups\n");
+		Telemetry_Print("# imu error: SPI transfer failed\n");
 		break;
 	}
 }
@@ -119,9 +117,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_I2C1_Init();
   MX_USART1_UART_Init();
-  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
   if (Timebase_Init() != HAL_OK)
@@ -144,15 +140,15 @@ int main(void)
     Telemetry_Print("# motors error: TIM3 init failed; outputs off\n");
   }
 
-  IMU_Status imu_status = IMU_Init(&hi2c1, &imu);
+  IMU_Status imu_status = IMU_Init(&imu);
   report_imu_status(imu_status);
 
-
-  if (imu_status == IMU_OK)
+  /* A missing magnetometer leaves accel and gyro working, so still calibrate. */
+  if (imu_status == IMU_OK || imu_status == IMU_ERR_MAG_WHOAMI)
   {
     Telemetry_Print("# calibrating gyro, hold still\n");
     Telemetry_Service();
-    if (IMU_CalibrateGyro(&hi2c1, &imu) == IMU_OK)
+    if (IMU_CalibrateGyro(&imu) == IMU_OK)
     {
       Telemetry_Print("# gyro calibrated\n");
     }
@@ -202,7 +198,7 @@ int main(void)
           next_us += LOOP_PERIOD_US;
       }
 
-      IMU_ReadAll(&hi2c1, &imu);
+      IMU_ReadAll(&imu);
 
       /* Every sample goes out, not every tenth: the write is a memcpy into a
        * ring buffer and DMA does the rest, so this no longer costs the loop
