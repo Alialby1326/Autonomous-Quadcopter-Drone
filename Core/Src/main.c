@@ -18,17 +18,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "adc.h"
-#include "dma.h"
 #include "i2c.h"
 #include "spi.h"
-#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "imu.h"
+#include "motors.h"
 #include "telemetry.h"
 #include "timebase.h"
 /* USER CODE END Includes */
@@ -59,10 +57,6 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint16_t ccrval;
-int16_t xval;
-int16_t yval;
-uint32_t vals[3];
 MPU9250_Data imu;
 /* USER CODE END PV */
 
@@ -125,22 +119,10 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_I2C1_Init();
-  MX_TIM2_Init();
-  MX_TIM4_Init();
-  MX_ADC1_Init();
   MX_USART1_UART_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-  //LED/MOTOR timers
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
-
-  //reading pot & joystick vals
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)vals, 3);
 
   if (Timebase_Init() != HAL_OK)
   {
@@ -153,6 +135,14 @@ int main(void)
 
   Telemetry_Print("# drone_code boot\n");
   Telemetry_Print("# I,t_us,ax,ay,az,gx,gy,gz,mx,my,mz,flags  (m/s^2, deg/s, uT)\n");
+
+  /* LEDs stand in for the ESCs on these pins until the motors are wired.
+   * A failure leaves the outputs silent rather than halting, so the IMU
+   * stream still runs and says why. */
+  if (Motors_Init() != HAL_OK)
+  {
+    Telemetry_Print("# motors error: TIM3 init failed; outputs off\n");
+  }
 
   IMU_Status imu_status = IMU_Init(&hi2c1, &imu);
   report_imu_status(imu_status);

@@ -5,15 +5,27 @@ See the [README](../README.md#architecture) for the reasoning behind the split
 between the STM32 and the Raspberry Pi.
 
 ```mermaid
-flowchart LR
+flowchart TB
 
-%% ───────────────────────── Board hardware ─────────────────────────
-subgraph group_hw["Board Hardware"]
+%% Layout (TB): top row = Planned on the Pi | Operator
+%%              middle  = Firmware | Host       (test_wire_contract.py sits between them)
+%%              bottom  = Board Hardware | USART1 link
+%% Mermaid's default (dagre) layout stacks two subgraphs vertically whenever an
+%% edge joins them directly, which is why test_wire_contract.py is drawn outside
+%% the Host box: its "reads source" edge into the firmware would otherwise stack
+%% Host on top of Firmware.
+%% "~~~" links are invisible and exist only to place things. Several of them make
+%% dagre draw an arrow upward (e.g. sensors below the scheduler, USART1 below the
+%% host). That depends on declaration order: Operator must be the first node, and
+%% each node's layout links must come before its real edges. Re-render after edits.
+
+node_operator(("Operator"))
+
+%% ───────────────────────── Planned on the Pi ─────────────────────────
+subgraph group_planned["Planned on the Pi"]
   direction TB
-  node_mpu[("MPU9250<br/>accel + gyro<br/>+ AK8963 mag")]
-  node_analog["Pot + Joystick<br/>PA1 / PA2 / PA3"]
-  node_leds["LEDs"]
-  node_escs["ESCs + Motors<br/>(not yet wired)"]
+  node_nav_cv["Navigation / CV"]
+  node_setpoints["Setpoint uplink"]
 end
 
 %% ───────────────────────── STM32 firmware ─────────────────────────
@@ -30,20 +42,16 @@ subgraph group_fw["STM32F401 Firmware · 84 MHz · the only flight-critical path
   node_timebase["µs Timebase · TIM5 1 MHz<br/>[timebase.c]"]
   node_imu_driver["IMU driver<br/>gyro cal · mag axis remap<br/>[imu.c]"]
   node_i2c["I2C1 · 400 kHz<br/>PB6 / PB7 [i2c.c]"]
-  node_adc["ADC1 + DMA2 Stream 0<br/>[adc.c, dma.c]"]
-  node_pwm_led["TIM2 (3 ch, 21 kHz)<br/>TIM4 (1 ch, 42 kHz)<br/>[tim.c]"]
-  node_pwm_esc["TIM3 · 4 ch<br/>PA6 / PA7 / PB0 / PB1<br/>(reserved)"]
-  node_telemetry["Telemetry ring buffer<br/>non-blocking, all-or-nothing<br/>[telemetry.c]"]
+  node_motors["Motors · TIM3 · 4 ch ESC PWM<br/>1000–2000 µs @ 400 Hz<br/>PA6 / PA7 / PB0 / PB1 [motors.c]"]
+  node_telemetry["Telemetry ring buffer [telemetry.c]"]
   node_uart["USART1 TX · DMA2 Stream 7<br/>PA9 [telemetry.c + usart.c]"]
 end
-
-%% ───────────────────────── The seam ─────────────────────────
-node_link{{"USART1 → USB-UART · 460800 baud<br/>I,t_us,ax,ay,az,gx,gy,gz,mx,my,mz,flags<br/>m/s² · deg/s · µT"}}
 
 %% ───────────────────────── Host tooling ─────────────────────────
 subgraph group_host["Host / Raspberry Pi · rpi_scripts/ (outside the flight loop)"]
   direction TB
 
+  node_codec["Wire format<br/>parse_line · format_line · ImuSample<br/>[telemetry.py]"]
   node_recorder["Log recorder<br/>[record_log.py]"]
   node_logfile[("flight.log<br/>wire format, verbatim")]
 
@@ -53,37 +61,57 @@ subgraph group_host["Host / Raspberry Pi · rpi_scripts/ (outside the flight loo
     node_src_log["iter_log"]
   end
 
-  node_codec["Wire format<br/>parse_line · format_line · ImuSample<br/>[telemetry.py]"]
   node_visualizer["Attitude comparison<br/>3D model · roll/pitch · |a|/g<br/>[visualize_attitude.py + attitude.py]"]
-  node_test_wire["test_wire_contract.py<br/>C ↔ Python drift check"]
 end
 
-subgraph group_planned["Planned on the Pi"]
+%% ───────────────────────── Board hardware ─────────────────────────
+subgraph group_hw["Board Hardware"]
   direction TB
-  node_nav_cv["Navigation / CV"]
-  node_setpoints["Setpoint uplink"]
+  node_mpu[("MPU9250<br/>accel + gyro<br/>+ AK8963 mag")]
+  node_leds["LEDs<br/>(stand-in for motors)"]
+  node_escs["ESCs + Motors<br/>(not yet wired)"]
 end
 
-node_operator(("Operator"))
+node_test_wire["test_wire_contract.py<br/>C ↔ Python drift check"]
+
+%% ───────────────────────── The seam ─────────────────────────
+node_link{{"USART1 → USB-UART · 460800 baud<br/>I,t_us,ax,ay,az,gx,gy,gz,mx,my,mz,flags<br/>m/s² · deg/s · µT"}}
+
+%% ─── Layout-only (invisible) links ───
+node_recorder ~~~ node_src_serial
+node_visualizer ~~~ node_link
+node_flight_loop ~~~ node_timebase
+node_flight_loop ~~~ node_imu_driver
+node_imu_driver ~~~ node_i2c
+node_setpoints ~~~ node_test_wire
+
+%% ─── Operator and planned control ───
+node_operator -.->|"commands"| node_setpoints
+node_operator -->|"runs"| node_recorder
+node_operator -->|"runs"| node_visualizer
+node_nav_cv -.-> node_setpoints
+node_setpoints -.->|"USART1 RX (no uplink yet)"| node_flight_loop
+
+%% ─── Contract check ───
+node_test_wire -.->|"compares"| node_codec
+node_test_wire -.->|"reads source"| node_telemetry
 
 %% ─── Firmware data path ───
-node_mpu <-->|"I²C regs"| node_i2c
+node_i2c <-->|"I²C regs"| node_mpu
 node_i2c --> node_imu_driver
 node_imu_driver -->|"IMU_ReadAll → MPU9250_Data"| node_flight_loop
 node_timebase -->|"Timebase_Micros() → t_us"| node_flight_loop
 node_flight_loop -->|"Telemetry_SendImu (memcpy)"| node_telemetry
 node_telemetry -->|"Telemetry_Service drains"| node_uart
 node_uart --> node_link
-node_analog --> node_adc
-node_adc -.->|"vals[3], not yet consumed"| node_flight_loop
-node_flight_loop -->|"PWM start at boot"| node_pwm_led
-node_pwm_led --> node_leds
+node_flight_loop -->|"Motors_Init at boot<br/>(idle 1000 µs)"| node_motors
+node_motors --> node_leds
 
 %% ─── Planned closed loop ───
 node_flight_loop -.-> node_est_c
 node_est_c -.->|"roll / pitch / yaw"| node_pid
-node_pid -.-> node_pwm_esc
-node_pwm_esc -.-> node_escs
+node_pid -.->|"Motors_SetThrottle"| node_motors
+node_motors -.->|"signal"| node_escs
 
 %% ─── Host data path ───
 node_link -->|"serial"| node_recorder
@@ -93,17 +121,6 @@ node_logfile --> node_src_log
 node_src_serial & node_src_log --> node_visualizer
 node_codec -.->|"parse_line"| node_recorder
 node_codec -.->|"parse_line"| node_src_serial
-
-%% ─── Contract check ───
-node_test_wire -.->|"reads source"| node_telemetry
-node_test_wire -.->|"compares"| node_codec
-
-%% ─── Operator and planned control ───
-node_operator -->|"runs"| node_visualizer
-node_operator -->|"runs"| node_recorder
-node_operator -.->|"commands"| node_setpoints
-node_nav_cv -.-> node_setpoints
-node_setpoints -.->|"USART1 RX (no uplink yet)"| node_flight_loop
 
 %% ─── Styling ───
 classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a
@@ -115,10 +132,10 @@ classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
 classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
 classDef planned fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:5 4,color:#475569
 
-class node_flight_loop,node_timebase,node_imu_driver,node_i2c,node_adc,node_pwm_led,node_telemetry,node_uart toneBlue
+class node_flight_loop,node_timebase,node_imu_driver,node_i2c,node_motors,node_telemetry,node_uart toneBlue
 class node_recorder,node_logfile,node_src_serial,node_src_log,node_codec,node_visualizer toneAmber
 class node_test_wire toneTeal
 class node_link toneRose
-class node_mpu,node_analog,node_leds,node_operator toneIndigo
-class node_est_c,node_pid,node_pwm_esc,node_escs,node_nav_cv,node_setpoints planned
+class node_mpu,node_leds,node_operator toneIndigo
+class node_est_c,node_pid,node_escs,node_nav_cv,node_setpoints planned
 ```

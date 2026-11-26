@@ -36,11 +36,10 @@ add_executable(${PROJECT_NAME}.elf
     Core/Src/imu.c
     Core/Src/telemetry.c
     Core/Src/timebase.c
-    Core/Src/adc.c
-    Core/Src/dma.c
+    Core/Src/motors.c
     Core/Src/gpio.c
     Core/Src/i2c.c
-    Core/Src/tim.c
+    Core/Src/spi.c
     Core/Src/usart.c
     Core/Src/stm32f4xx_hal_msp.c
     Core/Src/stm32f4xx_it.c

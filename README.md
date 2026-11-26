@@ -92,40 +92,28 @@ in rotated relative to the accel/gyro, so the driver remaps it
 (`mag X → accel Y`, `mag Y → accel X`, `mag Z → −accel Z`) — everything
 downstream sees one consistent frame.
 
-### Phase 1: Control testing
+### Phase 1: Control and Firmware testing
 The STM32 Blackpill is being used to run control logic for the IMU. Once this is tested, the PID controller should be written, and the Raspberry Pi must be ready to handle commands and communicate them to the STM32 via UART.
 
-- [x] configure timers, clock, and test PWM
-- [x] test PWM on 4 channels
-- [x] Read analog values from the potentiometer and use them to adjust all LEDs
-- [x] Use multi-channel ADC with DMA to read joystick and potentiometer values
-- [x] Interface IMU (MPU9250) sensor through i2c
-- [x] AK8963 factory sensitivity (ASA) calibration and axis remapping
+- [x] configure timers, clock, and test PWM (hardware testing)
+- [ ] Port IMU (MPU9250) sensor from i2c to SPI and retest
+- [ ] Implement Barometer (bmp280) with i2c, incorporate into telemetry
+- [ ] Implement GPS (GT-U7) with uart, incorporate into telemetry
 - [x] Gyro bias calibration at boot
 - [x] Non-blocking DMA telemetry, one line per sample, microsecond timestamps
 - [x] Python scripts to record and plot the raw IMU stream
 - [ ] Hard-iron / soft-iron magnetometer calibration (redo after the PCB exists)
 - [ ] Confirm the IMU stream on hardware with `record_log.py` (magnetometer still reads zero)
 - [ ] Write PID controller on STM32
-- [ ] Attitude estimation on the STM32
-- [ ] Four synchronized ESC channels on TIM3 (PA6/PA7/PB0/PB1), plus arming and failsafe
+- [ ] Attitude estimation on the STM32 w/ configurable estimators
+- [x] Four synchronized ESC-PWM channels on TIM3 (PA6/PA7/PB0/PB1), LEDs standing in for motors
+- [ ] Create quadcopter dynamics model for PID testing, ground-truth simulation against attitude filters, and future companion computer implementation.
 
 Goal for phase 1:
-- [ ] STM32 holds a commanded attitude on its own, with the Pi supplying setpoints and recording telemetry.
+- [ ] Stable telemetry, PID initial testing, and implemented host tooling for visualizing attitude filters, paving the way for future design on the Raspberry Pi companion computer.
 
-### Phase 2: Sensor Fusion Design
-Sensors and microcontrollers should go onto a PCB for further testing, incorporate GPS and Barometer into the control logic.
-- [ ] finalize battery, esc, motor choices
-- [ ] design PCB
-- [ ] MORE TBD
+### Phase 2: Initial hardware build 
+Initial build without the companion computer, basic flight with onboard attitude estimation on the STM32.
 
-7/1/2025 Current setup:
-- 4 LEDS to test PWM (for motors), potentiometer would adjust all brightness levels
-- USB to UART converter for STM32 to send serial data to read on the laptop
-- MPU9250 communicating via i2c
 
-Note: motor PWM currently runs on TIM2 (3 channels @ 21 kHz) and TIM4 (1 channel
-@ 42 kHz) — fine for driving LEDs, but ESCs need four channels at a common
-frequency. TIM3 can supply all four synchronized; that move is queued above.
 
-![image](https://github.com/user-attachments/assets/7bd714c2-9c71-4ed1-be03-569fdb4183a3)

@@ -50,6 +50,10 @@ The attitude estimator and PID run **on the STM32**, as one deterministic loop:
 IMU → attitude → PID → PWM. The Raspberry Pi sits outside that loop (setpoints, logging,
 CV) so the aircraft stays controllable if the Pi hangs or is absent.
 
+**Keep `docs/DESIGN.md` in step.** Its Mermaid diagram is the system map. Whenever a change
+adds, removes or moves a peripheral, pin, DMA stream, module or data path, update the diagram
+in the same change, and mark what's implemented as solid and what's planned as dashed.
+
 Neither the attitude estimator nor the PID exists yet. The PID comes first; filter work
 waits until there is a controller to feed and hardware data to check it against. The host
 tools record the raw stream and compare host-side attitude estimators on it
@@ -92,18 +96,29 @@ and `.cproject` (Linker → Miscellaneous → Other flags, in *both* the Debug a
 blocks) and the two must stay in step. Eclipse ignores an unrecognized option ID silently, so
 verify in the CubeIDE GUI after touching `.cproject`.
 
-**CubeMX regeneration.** `drone_code.ioc` regenerates `Core/Src/{adc,dma,gpio,i2c,tim,usart}.c`,
-`main.c` (outside `USER CODE` blocks), and `stm32f4xx_it.c`. To survive that:
+**CubeMX regeneration.** The project is moving off CubeMX/CubeIDE: new hardware setup is
+written by hand in the module that uses it, with HAL calls, never added to the `.ioc`.
+Until the remaining peripherals are migrated, `drone_code.ioc` still regenerates
+`Core/Src/{gpio,i2c,spi,usart}.c`, `main.c` (outside `USER CODE` blocks), `stm32f4xx_it.c`
+and `stm32f4xx_hal_conf.h`. To survive that:
 
-- `timebase.c`/`telemetry.c`/`imu.c` are hand-written and unmanaged by CubeMX.
-- **TIM5 must stay unused in CubeMX** — `Timebase_Init()` configures it, and a generated
-  `MX_TIM5_Init` would collide.
+- `timebase.c`/`telemetry.c`/`motors.c`/`imu.c` are hand-written and unmanaged by CubeMX.
+- **TIM3, TIM5 and PA6/PA7/PB0/PB1 must stay unused in CubeMX.** `Motors_Init()` and
+  `Timebase_Init()` configure them; a generated `MX_TIM3_Init`/`MX_TIM5_Init` would collide.
+- **Regeneration disables HAL's TIM module.** No timer is configured in CubeMX, so it will
+  comment out `HAL_TIM_MODULE_ENABLED` in `stm32f4xx_hal_conf.h`, and `timebase.c`/`motors.c`
+  stop compiling. Re-enable that line after every regeneration.
 - **USART1 must have no DMA request and no NVIC entry in CubeMX** — `telemetry.c` sets up
   DMA2 Stream 7 itself and defines `DMA2_Stream7_IRQHandler`/`USART1_IRQHandler`, overriding
   the startup file's weak symbols. Enabling them in CubeMX produces a duplicate-symbol link
   error, which is the intended loud failure.
+- **The `.ioc` doesn't show what the hand-written modules use.** Its DMA tab is empty and its
+  NVIC tab doesn't list DMA2 Stream 7 or USART1 (both prio 5, from `telemetry.c`), and TIM3
+  shows as free. Don't assign anything to those resources in CubeMX (e.g. SPI1_TX on
+  Stream 7). Treat the hand-written modules, not the `.ioc`, as the record of these settings.
 - All `main.c` edits go inside `USER CODE` blocks.
-- Baud lives in generated `Core/Src/usart.c` and reverts to 115200 on regeneration.
+- Baud (460800) is set in the `.ioc` and generated into `Core/Src/usart.c`, so regeneration
+  keeps it.
 
 **Timing.** Schedule off `Timebase_Micros()` (1 MHz, 32-bit) rather than `HAL_GetTick()`,
 whose 1 ms resolution is the same order as the loop period. The counter wraps every ~71.6 min,
@@ -113,15 +128,18 @@ so always compare with signed differences: `(int32_t)(a - b)`.
 and is all-or-nothing (a truncated frame corrupts the host's parse). Call `Telemetry_Service()`
 regularly. Check `Telemetry_Dropped()` after raising the loop rate.
 
-**Motor PWM is not flight-ready.** TIM2 (3 ch @ 21 kHz) and TIM4 (1 ch @ 42 kHz) drive LEDs.
-ESCs need four channels at a common frequency; TIM3 (PA6/PA7/PB0/PB1) is deliberately kept
-free for that.
+**Motor outputs drive LEDs for now.** `motors.c` puts standard ESC PWM (1000–2000 µs pulse,
+400 Hz, 1 µs resolution) on TIM3, the same signal the ESCs will get. LEDs on those pins sit
+at 40% duty at zero throttle, not off; that is the ESC idle pulse, not a bug. There is no
+arming or failsafe yet: outputs start at `MOTOR_PULSE_MIN_US` as soon as `Motors_Init()`
+runs. Add that before connecting ESCs with propellers on.
 
 ## Hardware map
 
-I2C1 PB6/PB7 @ 400 kHz (MPU9250) · USART1 PA9/PA10 (telemetry TX via DMA2 Stream 7) ·
-ADC1 PA1/PA2/PA3 via DMA2 Stream 0 (pot + joystick) · TIM5 microsecond timebase ·
-TIM2/TIM4 PWM. Clock: 8 MHz HSE → 84 MHz.
+I2C1 PB6/PB7 @ 400 kHz (MPU9250) · SPI2 PB13/PB14/PB15 + CS PB12 (IMU, refactor in
+progress) · USART1 PA9/PA10 (telemetry TX via DMA2 Stream 7) · TIM3 PA6/PA7/PB0/PB1 motor
+PWM · TIM5 microsecond timebase. ADC1, TIM2, TIM4 and DMA2 Stream 0 are unused. Clock:
+25 MHz HSE → 84 MHz.
 
 ## Status
 
