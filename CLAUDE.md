@@ -102,22 +102,14 @@ and `.cproject` (Linker → Miscellaneous → Other flags, in *both* the Debug a
 blocks) and the two must stay in step. Eclipse ignores an unrecognized option ID silently, so
 verify in the CubeIDE GUI after touching `.cproject`.
 
-**CubeMX: don't regenerate.** The project is moving off CubeMX/CubeIDE, and every peripheral
-is now set up by hand in the module that uses it, with HAL calls: `timebase.c` (TIM5),
-`telemetry.c` (USART1, PA9/PA10, DMA2 Stream 7, both IRQs, `TLM_BAUD`), `motors.c` (TIM3,
-PA6/PA7/PB0/PB1), `imu.c` (SPI2, PB12–PB15). New hardware follows the same pattern and never
-goes into the `.ioc`. The `.ioc` now only describes the clock tree, SysTick and NVIC priority
-grouping, and still nominally owns `SystemClock_Config` in `main.c`, `stm32f4xx_it.c`,
-`stm32f4xx_hal_msp.c` and `stm32f4xx_hal_conf.h`. Regenerating would:
-
-- comment out `HAL_TIM_MODULE_ENABLED`, `HAL_SPI_MODULE_ENABLED` and `HAL_UART_MODULE_ENABLED`
-  in `stm32f4xx_hal_conf.h`, so the hand-written modules stop compiling;
-- recreate `gpio.c` and an `MX_GPIO_Init()` call in `main.c`, which CMake doesn't build, so
-  the link fails;
-- show TIM3, TIM5, SPI2, USART1 and DMA2 Stream 7 as free, though they aren't.
-
-If you regenerate anyway, undo all three. `main.c` edits still go inside `USER CODE` blocks
-until the `.ioc` is deleted, which is the remaining step.
+**No CubeMX.** The `.ioc` is gone, and every peripheral is set up by hand in the module that
+uses it, with HAL calls: `timebase.c` (TIM5), `telemetry.c` (USART1, PA9/PA10, DMA2 Stream 7,
+both IRQs, `TLM_BAUD`), `motors.c` (TIM3, PA6/PA7/PB0/PB1), `imu.c` (SPI2, PB12–PB15). New
+hardware follows the same pattern: the module enables its own clocks, pins and interrupts,
+and claims its pins in the hardware map below. The CubeMX-generated files that remain
+(`main.c`, `stm32f4xx_it.c`, `stm32f4xx_hal_msp.c`, `stm32f4xx_hal_conf.h`) are ordinary
+source now, so edit them anywhere. A HAL module used for the first time must be enabled by hand
+in `stm32f4xx_hal_conf.h`.
 
 **Timing.** Schedule off `Timebase_Micros()` (1 MHz, 32-bit) rather than `HAL_GetTick()`,
 whose 1 ms resolution is the same order as the loop period. The counter wraps every ~71.6 min,

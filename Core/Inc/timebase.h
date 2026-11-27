@@ -9,10 +9,6 @@
  *  integration is directly sensitive to that. TIM5 is 32-bit on the F401, so a
  *  1 MHz free-running counter gives microsecond resolution and wraps only
  *  every ~71.6 minutes.
- *
- *  This file is hand-written rather than CubeMX-generated, so regenerating the
- *  project from drone_code.ioc will not disturb it. TIM5 must be left unused
- *  in CubeMX or the generated MX_TIM5_Init would collide with this.
  */
 
 #ifndef INC_TIMEBASE_H_

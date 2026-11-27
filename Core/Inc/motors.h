@@ -18,8 +18,7 @@
  *  80%. The output never goes fully dark while running, and that is correct:
  *  an ESC needs the 1000 us pulse to arm and to stay stopped.
  *
- *  Hand-written: this module configures TIM3, its pins and its clock itself.
- *  TIM3 and PA6/PA7/PB0/PB1 must stay unused in CubeMX.
+ *  This module configures TIM3, its pins and its clock itself.
  */
 
 #ifndef INC_MOTORS_H_

@@ -1,7 +1,7 @@
 /*
  * timebase.c
  *
- *  See timebase.h for why this exists and why it is not CubeMX-generated.
+ *  See timebase.h for why this exists.
  */
 
 #include "timebase.h"

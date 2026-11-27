@@ -12,8 +12,7 @@
  *  EXT_SENS_DATA, so one SPI burst returns accel, temperature, gyro and mag
  *  together.
  *
- *  Hand-written: this module configures SPI2 and its pins itself. SPI2 and
- *  PB12-PB15 must stay unused in CubeMX.
+ *  This module configures SPI2 and its pins itself.
  *
  *  Created on: Jun 19, 2025
  *      Author: aaalb

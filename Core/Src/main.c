@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -15,26 +14,18 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
 #include "imu.h"
 #include "motors.h"
 #include "telemetry.h"
 #include "timebase.h"
-/* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-
-/* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
 
 /* Control loop rate. The MPU9250 is configured for a 1 kHz internal sample
  * rate, so this can be raised well beyond 100 Hz once there is a PID loop
@@ -43,27 +34,16 @@
 #define LOOP_RATE_HZ    100u
 #define LOOP_PERIOD_US  (1000000u / LOOP_RATE_HZ)
 
-/* USER CODE END PD */
-
 /* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
-/* USER CODE BEGIN PV */
 MPU9250_Data imu;
-/* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-/* USER CODE BEGIN PFP */
-
-/* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
 
 static void report_imu_status(IMU_Status status)
 {
@@ -84,37 +64,21 @@ static void report_imu_status(IMU_Status status)
 	}
 }
 
-/* USER CODE END 0 */
-
 /**
   * @brief  The application entry point.
   * @retval int
   */
 int main(void)
 {
-
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
   /* Configure the system clock */
   SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
   /* Initialize all configured peripherals */
-  /* USER CODE BEGIN 2 */
 
   if (Timebase_Init() != HAL_OK)
   {
@@ -154,10 +118,7 @@ int main(void)
     }
   }
 
-  /* USER CODE END 2 */
-
   /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
 
   /* Scheduling runs off the 1 MHz TIM5 counter rather than HAL_GetTick(),
    * whose 1 ms resolution is the same order as the loop period itself.
@@ -201,13 +162,7 @@ int main(void)
        * anything measurable. */
       Telemetry_SendImu(now_us, &imu, loop_flags);
       Telemetry_Service();
-
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-
   }
-  /* USER CODE END 3 */
 }
 
 /**
@@ -255,23 +210,17 @@ void SystemClock_Config(void)
   }
 }
 
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
-
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
   {
   }
-  /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT
@@ -284,9 +233,7 @@ void Error_Handler(void)
   */
 void assert_failed(uint8_t *file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
