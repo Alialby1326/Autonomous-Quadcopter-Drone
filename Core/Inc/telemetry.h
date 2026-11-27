@@ -20,9 +20,8 @@
  *  Units are m/s^2, deg/s and uT. Parsed by rpi_scripts/droneviz/telemetry.py,
  *  which must be kept in step with any change here.
  *
- *  Hand-written, not CubeMX-generated, so regenerating from drone_code.ioc
- *  leaves it alone. It configures DMA2 Stream 7 (the USART1_TX stream) itself,
- *  so USART1 must have no DMA request configured in CubeMX.
+ *  Hand-written. This module owns USART1 outright: PA9/PA10, the baud rate,
+ *  DMA2 Stream 7 (the only stream USART1_TX can use) and both interrupts.
  */
 
 #ifndef INC_TELEMETRY_H_
@@ -35,8 +34,12 @@
  * more slack than a healthy link needs and enough to ride out a stall. */
 #define TLM_BUFFER_SIZE 1024
 
-/* Set up the DMA stream and interrupts for the given UART. */
-HAL_StatusTypeDef Telemetry_Init(UART_HandleTypeDef *huart);
+/* The host tools default to the same rate (--baud in rpi_scripts). */
+#define TLM_BAUD 460800u
+
+/* Configure USART1, its pins, DMA stream and interrupts. Call once, after
+ * SystemClock_Config. Until it succeeds every write is dropped. */
+HAL_StatusTypeDef Telemetry_Init(void);
 
 /* Queue bytes for transmission. Returns 0 and counts a drop if the buffer is
  * full -- telemetry is diagnostic, and stalling the control loop to deliver it

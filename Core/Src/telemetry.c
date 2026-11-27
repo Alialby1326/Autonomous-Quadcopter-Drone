@@ -15,7 +15,8 @@
 #error "TLM_BUFFER_SIZE must be a power of two"
 #endif
 
-static UART_HandleTypeDef *tlm_uart;
+static UART_HandleTypeDef huart1;
+static UART_HandleTypeDef *tlm_uart;    /* NULL until Telemetry_Init succeeds */
 static DMA_HandleTypeDef hdma_usart1_tx;
 
 static uint8_t tlm_buffer[TLM_BUFFER_SIZE];
@@ -63,20 +64,43 @@ static void tlm_kick(void)
 	}
 }
 
-HAL_StatusTypeDef Telemetry_Init(UART_HandleTypeDef *huart)
+HAL_StatusTypeDef Telemetry_Init(void)
 {
-	tlm_uart = huart;
+	GPIO_InitTypeDef gpio = {0};
+
+	tlm_uart = NULL;
 	tlm_head = 0u;
 	tlm_tail = 0u;
 	tlm_in_flight = 0u;
 	tlm_dropped = 0u;
 
-	/* DMA2's clock is already enabled by MX_DMA_Init for the ADC; enabling it
-	 * again is harmless and keeps this module self-contained. */
+	__HAL_RCC_USART1_CLK_ENABLE();
+	__HAL_RCC_GPIOA_CLK_ENABLE();
 	__HAL_RCC_DMA2_CLK_ENABLE();
 
-	/* USART1_TX is DMA2 Stream 7, Channel 4 on the STM32F401. Stream 0 is
-	 * taken by the ADC; Stream 7 is free. */
+	/* PA9 = TX, PA10 = RX. RX is configured but unused until the setpoint
+	 * uplink exists. */
+	gpio.Pin = GPIO_PIN_9 | GPIO_PIN_10;
+	gpio.Mode = GPIO_MODE_AF_PP;
+	gpio.Pull = GPIO_NOPULL;
+	gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+	gpio.Alternate = GPIO_AF7_USART1;
+	HAL_GPIO_Init(GPIOA, &gpio);
+
+	/* USART1 is on APB2 (84 MHz); HAL derives the divider from that. */
+	huart1.Instance = USART1;
+	huart1.Init.BaudRate = TLM_BAUD;
+	huart1.Init.WordLength = UART_WORDLENGTH_8B;
+	huart1.Init.StopBits = UART_STOPBITS_1;
+	huart1.Init.Parity = UART_PARITY_NONE;
+	huart1.Init.Mode = UART_MODE_TX_RX;
+	huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+	if (HAL_UART_Init(&huart1) != HAL_OK) {
+		return HAL_ERROR;
+	}
+
+	// USART1_TX is DMA2 Stream 7, Channel 4 on the STM32F401. 
 	hdma_usart1_tx.Instance = DMA2_Stream7;
 	hdma_usart1_tx.Init.Channel = DMA_CHANNEL_4;
 	hdma_usart1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
@@ -91,15 +115,16 @@ HAL_StatusTypeDef Telemetry_Init(UART_HandleTypeDef *huart)
 	if (HAL_DMA_Init(&hdma_usart1_tx) != HAL_OK) {
 		return HAL_ERROR;
 	}
-	__HAL_LINKDMA(huart, hdmatx, hdma_usart1_tx);
+	__HAL_LINKDMA(&huart1, hdmatx, hdma_usart1_tx);
 
-	/* Lower priority than the ADC's stream: telemetry is diagnostic and can
-	 * afford to wait, sensor data cannot. */
+	/* Priority 5: below anything flight-critical that gets an interrupt
+	 * later. Telemetry is diagnostic and can afford to wait. */
 	HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 5, 0);
 	HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
 	HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);
 	HAL_NVIC_EnableIRQ(USART1_IRQn);
 
+	tlm_uart = &huart1;
 	return HAL_OK;
 }
 
@@ -210,12 +235,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 /*
  * Interrupt handlers.
  *
- * These override the weak defaults in the startup file, so they live here
- * rather than in the CubeMX-managed stm32f4xx_it.c and survive regeneration.
- * If USART1 is ever given a DMA request or a global interrupt in CubeMX, the
- * generated handlers will collide with these -- the link will fail with a
- * duplicate symbol, which is a clear enough signal to come back and delete
- * one copy.
+ * These override the weak defaults in the startup file, so they live with
+ * the module that owns USART1 rather than in stm32f4xx_it.c.
  */
 void DMA2_Stream7_IRQHandler(void)
 {
@@ -224,5 +245,5 @@ void DMA2_Stream7_IRQHandler(void)
 
 void USART1_IRQHandler(void)
 {
-	HAL_UART_IRQHandler(tlm_uart);
+	HAL_UART_IRQHandler(&huart1);
 }

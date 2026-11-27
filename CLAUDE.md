@@ -102,32 +102,22 @@ and `.cproject` (Linker → Miscellaneous → Other flags, in *both* the Debug a
 blocks) and the two must stay in step. Eclipse ignores an unrecognized option ID silently, so
 verify in the CubeIDE GUI after touching `.cproject`.
 
-**CubeMX regeneration.** The project is moving off CubeMX/CubeIDE: new hardware setup is
-written by hand in the module that uses it, with HAL calls, never added to the `.ioc`.
-Until the remaining peripherals are migrated, `drone_code.ioc` still regenerates
-`Core/Src/{gpio,usart}.c` (PC13 and USART1 only), `main.c` (clock and init calls, outside
-`USER CODE` blocks), `stm32f4xx_it.c`, `stm32f4xx_hal_msp.c` and `stm32f4xx_hal_conf.h`. To
-survive that:
+**CubeMX: don't regenerate.** The project is moving off CubeMX/CubeIDE, and every peripheral
+is now set up by hand in the module that uses it, with HAL calls: `timebase.c` (TIM5),
+`telemetry.c` (USART1, PA9/PA10, DMA2 Stream 7, both IRQs, `TLM_BAUD`), `motors.c` (TIM3,
+PA6/PA7/PB0/PB1), `imu.c` (SPI2, PB12–PB15). New hardware follows the same pattern and never
+goes into the `.ioc`. The `.ioc` now only describes the clock tree, SysTick and NVIC priority
+grouping, and still nominally owns `SystemClock_Config` in `main.c`, `stm32f4xx_it.c`,
+`stm32f4xx_hal_msp.c` and `stm32f4xx_hal_conf.h`. Regenerating would:
 
-- `timebase.c`/`telemetry.c`/`motors.c`/`imu.c` are hand-written and unmanaged by CubeMX.
-- **TIM3, TIM5, SPI2 and their pins (PA6/PA7/PB0/PB1, PB12–PB15) must stay unused in
-  CubeMX.** `Motors_Init()`, `Timebase_Init()` and `IMU_Init()` configure them; a generated
-  init function would collide.
-- **Regeneration disables HAL's TIM and SPI modules.** Neither is configured in CubeMX, so it
-  comments out `HAL_TIM_MODULE_ENABLED` and `HAL_SPI_MODULE_ENABLED` in
-  `stm32f4xx_hal_conf.h`, and `timebase.c`/`motors.c`/`imu.c` stop compiling. Re-enable both
-  after every regeneration.
-- **USART1 must have no DMA request and no NVIC entry in CubeMX** — `telemetry.c` sets up
-  DMA2 Stream 7 itself and defines `DMA2_Stream7_IRQHandler`/`USART1_IRQHandler`, overriding
-  the startup file's weak symbols. Enabling them in CubeMX produces a duplicate-symbol link
-  error, which is the intended loud failure.
-- **The `.ioc` doesn't show what the hand-written modules use.** Its DMA tab is empty and its
-  NVIC tab doesn't list DMA2 Stream 7 or USART1 (both prio 5, from `telemetry.c`), and TIM3
-  shows as free. Don't assign anything to those resources in CubeMX (e.g. SPI1_TX on
-  Stream 7). Treat the hand-written modules, not the `.ioc`, as the record of these settings.
-- All `main.c` edits go inside `USER CODE` blocks.
-- Baud (460800) is set in the `.ioc` and generated into `Core/Src/usart.c`, so regeneration
-  keeps it.
+- comment out `HAL_TIM_MODULE_ENABLED`, `HAL_SPI_MODULE_ENABLED` and `HAL_UART_MODULE_ENABLED`
+  in `stm32f4xx_hal_conf.h`, so the hand-written modules stop compiling;
+- recreate `gpio.c` and an `MX_GPIO_Init()` call in `main.c`, which CMake doesn't build, so
+  the link fails;
+- show TIM3, TIM5, SPI2, USART1 and DMA2 Stream 7 as free, though they aren't.
+
+If you regenerate anyway, undo all three. `main.c` edits still go inside `USER CODE` blocks
+until the `.ioc` is deleted, which is the remaining step.
 
 **Timing.** Schedule off `Timebase_Micros()` (1 MHz, 32-bit) rather than `HAL_GetTick()`,
 whose 1 ms resolution is the same order as the loop period. The counter wraps every ~71.6 min,
@@ -147,8 +137,8 @@ runs. Add that before connecting ESCs with propellers on.
 
 SPI2 mode 3, SCK PB13 / MISO PB14 / MOSI PB15 / CS PB12 (MPU9250; ≤1 MHz for register
 writes, 5.25 MHz for sensor reads) · USART1 PA9/PA10 (telemetry TX via DMA2 Stream 7) · TIM3
-PA6/PA7/PB0/PB1 motor PWM · TIM5 microsecond timebase · PC13 onboard LED. I2C1 (PB6/PB7, planned
-for the BMP280), ADC1, TIM2, TIM4 and DMA2 Stream 0 are unused. Clock: 25 MHz HSE → 84 MHz.
+PA6/PA7/PB0/PB1 motor PWM · TIM5 microsecond timebase. I2C1 (PB6/PB7, planned for the
+BMP280), ADC1, TIM2, TIM4, DMA2 Stream 0 and PC13 (onboard LED) are unused. Clock: 25 MHz HSE → 84 MHz.
 
 ## Status
 

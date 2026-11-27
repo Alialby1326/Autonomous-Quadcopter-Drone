@@ -44,7 +44,7 @@ subgraph group_fw["STM32F401 Firmware · 84 MHz · the only flight-critical path
   node_spi["SPI2 · mode 3<br/>≤1 MHz regs, 5.25 MHz data reads<br/>PB13–15, CS PB12 [imu.c]"]
   node_motors["Motors · TIM3 · 4 ch ESC PWM<br/>1000–2000 µs @ 400 Hz<br/>PA6 / PA7 / PB0 / PB1 [motors.c]"]
   node_telemetry["Telemetry ring buffer [telemetry.c]"]
-  node_uart["USART1 TX · DMA2 Stream 7<br/>PA9 [telemetry.c + usart.c]"]
+  node_uart["USART1 TX · DMA2 Stream 7<br/>PA9 · 460800 baud [telemetry.c]"]
 end
 
 %% ───────────────────────── Host tooling ─────────────────────────
