@@ -2,7 +2,8 @@
 
 Solid boxes and arrows are implemented; dashed ones are planned or reserved.
 See the [README](../README.md#architecture) for the reasoning behind the split
-between the STM32 and the Raspberry Pi.
+between the STM32 and the Raspberry Pi. There is no CubeMX: each firmware module
+sets up its own peripheral, pins, DMA and interrupts, as labelled on its box.
 
 ```mermaid
 flowchart TB
@@ -51,8 +52,8 @@ end
 subgraph group_host["Host / Raspberry Pi · rpi_scripts/ (outside the flight loop)"]
   direction TB
 
-  node_codec["Wire format<br/>parse_line · format_line · ImuSample<br/>[telemetry.py]"]
-  node_recorder["Log recorder<br/>[record_log.py]"]
+  node_codec["Wire format<br/>parse_line · format_line · ImuSample<br/>drops malformed / torn lines<br/>[telemetry.py]"]
+  node_recorder["Log recorder<br/>--monitor [MS]: print only, no file<br/>[record_log.py]"]
   node_logfile[("flight.log<br/>wire format, verbatim")]
 
   subgraph group_sources["Sample sources → Iterator[ImuSample] · droneviz/sources.py"]
@@ -70,12 +71,14 @@ subgraph group_hw["Board Hardware"]
   node_mpu[("MPU9250<br/>accel + gyro<br/>+ AK8963 mag, polled by<br/>its internal I²C master")]
   node_leds["LEDs<br/>(stand-in for motors)"]
   node_escs["ESCs + Motors<br/>(not yet wired)"]
+  node_stlink["ST-Link V2<br/>SWD · PA13 / PA14"]
 end
 
 node_test_wire["test_wire_contract.py<br/>C ↔ Python drift check"]
+node_flash["Flash · cmake --build build --target flash<br/>STM32_Programmer_CLI.exe on Windows<br/>write · verify · reset [CMakeLists.txt]"]
 
 %% ───────────────────────── The seam ─────────────────────────
-node_link{{"USART1 → USB-UART · 460800 baud<br/>I,t_us,ax,ay,az,gx,gy,gz,mx,my,mz,flags<br/>m/s² · deg/s · µT"}}
+node_link{{"USART1 → CP210x USB-UART · 460800 baud<br/>I,t_us,ax,ay,az,gx,gy,gz,mx,my,mz,flags<br/>m/s² · deg/s · µT<br/>WSL: usbipd attach (can drop bytes)"}}
 
 %% ─── Layout-only (invisible) links ───
 node_recorder ~~~ node_src_serial
@@ -89,12 +92,17 @@ node_setpoints ~~~ node_test_wire
 node_operator -.->|"commands"| node_setpoints
 node_operator -->|"runs"| node_recorder
 node_operator -->|"runs"| node_visualizer
+node_operator -->|"runs"| node_flash
 node_nav_cv -.-> node_setpoints
 node_setpoints -.->|"USART1 RX (no uplink yet)"| node_flight_loop
 
 %% ─── Contract check ───
 node_test_wire -.->|"compares"| node_codec
 node_test_wire -.->|"reads source"| node_telemetry
+
+%% ─── Flashing (Windows owns the ST-Link; no usbipd) ───
+node_flash -->|"USB"| node_stlink
+node_stlink -->|"SWD: .elf image"| group_fw
 
 %% ─── Firmware data path ───
 node_spi <-->|"one 22-byte burst:<br/>accel · temp · gyro · EXT_SENS mag"| node_mpu
@@ -133,9 +141,9 @@ classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
 classDef planned fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,stroke-dasharray:5 4,color:#475569
 
 class node_flight_loop,node_timebase,node_imu_driver,node_spi,node_motors,node_telemetry,node_uart toneBlue
-class node_recorder,node_logfile,node_src_serial,node_src_log,node_codec,node_visualizer toneAmber
+class node_recorder,node_logfile,node_src_serial,node_src_log,node_codec,node_visualizer,node_flash toneAmber
 class node_test_wire toneTeal
 class node_link toneRose
-class node_mpu,node_leds,node_operator toneIndigo
+class node_mpu,node_leds,node_stlink,node_operator toneIndigo
 class node_est_c,node_pid,node_escs,node_nav_cv,node_setpoints planned
 ```

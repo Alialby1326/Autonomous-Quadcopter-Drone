@@ -2,8 +2,16 @@
 """Record the STM32's telemetry stream to a replayable log.
 
     python3 record_log.py --port /dev/ttyUSB0 --output flight.log
+    python3 record_log.py --port /dev/ttyUSB0 --monitor     # just watch, save nothing
+    python3 record_log.py --port /dev/ttyUSB0 --monitor 250 # at most one sample per 250 ms
 
-Writes the wire format verbatim, so `visualize_attitude.py --log` can replay
+--monitor prints lines as they arrive, including the firmware's "#" status
+messages (boot, IMU errors, calibration), and writes no file. An optional value
+in milliseconds throttles the sample lines to at most one per interval; status
+messages and garbage lines always print, and the end-of-run statistics still
+count every sample.
+
+Recording writes the wire format verbatim, so `visualize_attitude.py --log` can replay
 the recording with the device's own timing rather than a guess at it.
 
 This is also the tool that captures data for magnetometer hard-iron
@@ -14,6 +22,7 @@ and fit the offsets offline from the result.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 import time
 from collections import Counter
@@ -27,7 +36,14 @@ def main() -> int:
     p.add_argument("--baud", type=int, default=460800)
     p.add_argument("--output", default="imu_capture.log")
     p.add_argument("--seconds", type=float, default=0.0, help="stop after N seconds (0 = until ctrl-c)")
+    p.add_argument(
+        "--monitor", nargs="?", type=float, const=0.0, default=None, metavar="MS",
+        help="print lines instead of saving to --output; optional MS shows at most one sample per MS ms",
+    )
     args = p.parse_args()
+    monitor = args.monitor is not None
+    if monitor and args.monitor < 0:
+        p.error("--monitor interval must be >= 0 ms")
 
     try:
         import serial  # pyserial
@@ -44,24 +60,45 @@ def main() -> int:
     first_t = None
     last_t = None
     start = time.monotonic()
+    interval_s = (args.monitor or 0.0) / 1000.0
+    next_print = 0.0
 
-    print(f"recording {args.port} @ {args.baud} -> {args.output} (ctrl-c to stop)")
+    if monitor:
+        every = f", one sample per {args.monitor:g} ms" if interval_s else ""
+        print(f"monitoring {args.port} @ {args.baud}{every} (ctrl-c to stop)")
+    else:
+        print(f"recording {args.port} @ {args.baud} -> {args.output} (ctrl-c to stop)")
 
     try:
+        # The port opens first, so a bad --port leaves no empty log behind.
         with serial.Serial(args.port, args.baud, timeout=1.0) as link, \
-                open(args.output, "w") as out:
+                (contextlib.nullcontext() if monitor else open(args.output, "w")) as out:
             link.reset_input_buffer()
             while True:
                 raw = link.readline()
                 if not raw:
                     continue
 
-                sample = parse_line(raw.decode("ascii", errors="replace"))
+                text = raw.decode("ascii", errors="replace")
+                sample = parse_line(text)
+
+                if monitor:
+                    # Status and garbage lines are rare and always worth seeing;
+                    # only the sample stream is throttled.
+                    now = time.monotonic()
+                    if sample is None or now >= next_print:
+                        print(text.rstrip("\r\n"), flush=True)
+                        if sample is not None:
+                            next_print = now + interval_s
+
                 if sample is None:
-                    junk += 1
+                    # "#" lines are the firmware's status messages, not noise.
+                    if not text.startswith("#"):
+                        junk += 1
                     continue
 
-                out.write(format_line(sample) + "\n")
+                if out is not None:
+                    out.write(format_line(sample) + "\n")
                 count += 1
                 last_t = sample.t
                 if first_t is None:
@@ -71,7 +108,7 @@ def main() -> int:
                     if sample.flags & bit:
                         flag_counts[bit] += 1
 
-                if count % 100 == 0:
+                if count % 100 == 0 and out is not None:
                     out.flush()
                     elapsed = time.monotonic() - start
                     print(
@@ -89,7 +126,10 @@ def main() -> int:
         print(f"\nserial error: {exc}", file=sys.stderr)
         return 1
 
-    print(f"\n\nwrote {count} samples to {args.output}")
+    if monitor:
+        print(f"\n\nsaw {count} samples")
+    else:
+        print(f"\n\nwrote {count} samples to {args.output}")
     if count and first_t is not None and last_t is not None and last_t > first_t:
         span = last_t - first_t
         # Rate computed from the device's own timestamps, not the host clock --

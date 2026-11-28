@@ -66,6 +66,8 @@ pip install -r requirements.txt
 ```sh
 # record the board, then watch it live or replay the capture
 python record_log.py --port /dev/ttyUSB0 --output flight.log
+python record_log.py --port /dev/ttyUSB0 --monitor     # just watch: every line, incl. "#" status messages
+python record_log.py --port /dev/ttyUSB0 --monitor 250 # same, at most one sample line per 250 ms
 python visualize_attitude.py --port /dev/ttyUSB0
 python visualize_attitude.py --log flight.log --loop
 

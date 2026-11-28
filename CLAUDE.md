@@ -18,8 +18,18 @@ cmake --build build
 ```
 
 Needs `gcc-arm-none-eabi cmake ninja-build`. Prints flash/RAM usage and emits `.hex`/`.bin`
-after each build. STM32CubeIDE still owns debugging and flashing; its `Debug/` makefile is
-generated and gitignored.
+after each build.
+
+```sh
+cmake --build build --target flash                  # build, write, verify, reset via ST-Link
+cmake -B build -DFLASH_PORT=usb1 && cmake --build build --target flash   # USB DFU instead
+```
+
+Uses STM32CubeProgrammer's CLI, found automatically (standalone install, else the newest copy
+bundled with CubeIDE under `/mnt/c/ST`); override with `-DSTM32_PROGRAMMER_CLI=<path>`. Under
+WSL it runs the Windows `.exe`, so the ST-Link needs no usbipd passthrough. DFU needs BOOT0
+held while tapping NRST. STM32CubeIDE still owns debugging; its `Debug/` makefile is generated
+and gitignored.
 
 Confirm float printf actually linked (see "printf floats" below):
 
@@ -37,12 +47,27 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 ./.venv/bin/python -m pytest tests/test_wire_contract.py::test_flag_definitions_match  # one test
 
 ./.venv/bin/python record_log.py --port /dev/ttyUSB0 --output flight.log
+./.venv/bin/python record_log.py --port /dev/ttyUSB0 --monitor          # print lines, save nothing
+./.venv/bin/python record_log.py --port /dev/ttyUSB0 --monitor 250      # ≤1 sample line per 250 ms
 ./.venv/bin/python visualize_attitude.py --port /dev/ttyUSB0          # live attitude
 ./.venv/bin/python visualize_attitude.py --log flight.log --loop      # replay a capture
 ```
 
 Tests are pure host code — no toolchain, no board. `pytest.ini` sets `pythonpath = .`, so
 pytest must run from `rpi_scripts/`.
+
+**Serial under WSL.** WSL2 can't see Windows USB devices, so `/dev/ttyUSB0` doesn't exist
+until the CP210x USB-UART adapter is passed through with usbipd-win (installed; the adapter
+is already bound/"Shared", which is the one-time admin step):
+
+```sh
+usbipd.exe list                                        # find the CP210x (10c4:ea60) bus ID
+usbipd.exe attach --wsl --busid 1-4 --auto-attach      # keep running; reattaches on replug
+```
+
+The bus ID belongs to the physical USB socket, so recheck `usbipd.exe list` if the adapter moves.
+Attach only the UART adapter, **never the ST-Link**: the flash target runs the Windows
+programmer, which needs Windows to own the ST-Link. On the Raspberry Pi none of this applies.
 
 ## Architecture
 
