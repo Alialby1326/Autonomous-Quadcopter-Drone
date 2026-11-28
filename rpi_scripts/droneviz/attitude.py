@@ -15,6 +15,9 @@ Conventions (see CLAUDE.md "Frames"):
                  body -> world
     roll  > 0    about +X: carries +Y toward +Z, i.e. a RIGHT bank
     pitch > 0    about +Y: carries +Z toward +X, i.e. NOSE DOWN
+    yaw   > 0    about +Z: carries +X toward +Y, i.e. NOSE LEFT (counter-
+                 clockwise seen from above); 0 = nose at magnetic north, so
+                 yaw is the negative of a compass heading
 
 Level and at rest the accelerometer reads (0, 0, +g). In a right bank it reads
 positive Y; nose down, negative X.
@@ -57,12 +60,46 @@ PITCH_MAX_RAD = math.radians(85)
 
 
 def accel_to_pitch_roll(ax: float, ay: float, az: float) -> tuple[float, float]:
+    """Exact Z-Y-X roll and pitch from gravity, for a board that isn't accelerating.
+
+    At rest the accelerometer reads g * (-sin p, cos p sin r, cos p cos r), so
+    ay/az = tan r on its own, while pitch has to come from ax against the whole
+    of the remaining length. Using sqrt(ax^2 + az^2) for roll instead, as this
+    did before, mixes pitch into roll: about 4 deg low at 30 deg roll + 30 deg
+    pitch.
+    """
     eps = 1e-9
     pitch = math.atan(-ax / (math.sqrt(ay * ay + az * az) + eps))
-    roll = math.atan(ay / (math.sqrt(ax * ax + az * az) + eps))
+    roll = math.atan2(ay, az)
     pitch = max(-PITCH_MAX_RAD, min(PITCH_MAX_RAD, pitch))
     roll = max(-ROLL_MAX_RAD, min(ROLL_MAX_RAD, roll))
     return pitch, roll
+
+
+MAG_MIN_UT = 1.0  # below this the field is missing (no mag data), not small
+
+
+def mag_to_yaw(mx: float, my: float, mz: float, roll: float, pitch: float) -> Optional[float]:
+    """Tilt-compensated compass: yaw from the body-frame field and a known tilt.
+
+    Undo roll then pitch, which leaves the field in a level frame that differs
+    from the world frame only by yaw. There the horizontal part of the field
+    points at magnetic north, so its direction gives yaw. The vertical part
+    (the dip, large at most latitudes) drops out, which is why tilt matters:
+    without this step, a few degrees of tilt mixes the dip into the horizontal
+    components and swings the heading by far more than the tilt.
+
+    No hard- or soft-iron correction yet, so nearby metal and the board's own
+    currents bias the result.
+    """
+    if math.sqrt(mx * mx + my * my + mz * mz) < MAG_MIN_UT:
+        return None
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    # Ry(pitch) @ Rx(roll) @ m
+    level_x = cp * mx + sp * (sr * my + cr * mz)
+    level_y = cr * my - sr * mz
+    return math.atan2(-level_y, level_x)
 
 
 # -- estimators --------------------------------------------------------------
@@ -76,6 +113,22 @@ class AccelTilt:
     def update(self, s: ImuSample, dt: float) -> Attitude:
         pitch, roll = accel_to_pitch_roll(s.ax, s.ay, s.az)
         return Attitude(roll, pitch)
+
+
+class AccelTilt_MagYaw:
+    """AccelTilt's roll and pitch, plus yaw from the magnetometer.
+
+    Inherits AccelTilt's weakness: roll and pitch are only right while the
+    board isn't accelerating, and any tilt error leaks into the yaw through
+    the tilt compensation. Yaw is None when there is no magnetometer data.
+    """
+
+    def reset(self) -> None:
+        pass
+
+    def update(self, s: ImuSample, dt: float) -> Attitude:
+        pitch, roll = accel_to_pitch_roll(s.ax, s.ay, s.az)
+        return Attitude(roll, pitch, mag_to_yaw(s.mx, s.my, s.mz, roll, pitch))
 
 
 class Smoothed:
@@ -114,4 +167,5 @@ class Smoothed:
 ESTIMATORS: dict[str, Callable[[], object]] = {
     "accel": AccelTilt,
     "accel lpf 0.1s": lambda: Smoothed(AccelTilt(), tau_s=0.1),
+    "accel + mag yaw": AccelTilt_MagYaw,
 }
